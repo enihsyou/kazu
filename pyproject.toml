@@ -1,0 +1,20 @@
+[project]
+name = "remains"
+version = "0.1.0"
+description = "CLI for scraping usage stats from web sources via agent-browser"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "platformdirs>=4.10.0",
+  "rich>=13.7.0",
+]
+
+[project.scripts]
+remains = "remains.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["remains"]
