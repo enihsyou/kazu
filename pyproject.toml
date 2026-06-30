@@ -1,7 +1,7 @@
 [project]
-name = "remains"
+name = "kazu"
 version = "0.1.0"
-description = "CLI for scraping usage stats from web sources via agent-browser"
+description = "数 (kazu) — CLI for scraping usage stats from web sources via agent-browser"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,11 +10,11 @@ dependencies = [
 ]
 
 [project.scripts]
-remains = "remains.cli:main"
+kazu = "kazu.cli:main"
 
 [build-system]
 requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["remains"]
+packages = ["kazu"]

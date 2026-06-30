@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import pkgutil
 
-from remains.sources.base import SourcePlugin
+from kazu.sources.base import SourcePlugin
 
 __all__ = ["SourcePlugin", "discover_sources", "get_sources"]
 

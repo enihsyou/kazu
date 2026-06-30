@@ -1,0 +1,19 @@
+[influxdb3]
+# InfluxDB 3 endpoint, e.g. https://influx.example.com
+host = ""
+# Destination database
+database = ""
+# Write token
+token = ""
+# Optional org/tenant
+org = ""
+
+[sources.ssp]
+# Logical domain label for this source
+default_domain = "ssp"
+# Source traffic page
+url = "https://s1.thefew01.top/#/traffic"
+# agent-browser session id
+session = "ssp"
+# Optional account override (empty means use scraped account)
+account = ""

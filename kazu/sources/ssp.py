@@ -7,10 +7,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from remains.agent_browser import is_installed, parse_json_output, run_agent_browser
-from remains.sources.base import SourcePlugin
-
-DEFAULT_SSP_URL = "https://s1.thefew01.top/#/traffic"
+from kazu.agent_browser import is_installed, parse_json_output, run_agent_browser
+from kazu.config import load_config
+from kazu.sources.base import SourcePlugin
 
 SSP_EVAL_SCRIPT = """(() => {
   const rows = Array.from(document.querySelectorAll('table tbody tr')).map((tr, i) => {
@@ -44,9 +43,10 @@ class SSPSource(SourcePlugin):
     help = "Fetch SSP traffic statistics"
 
     def register_parser(self, subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+        cfg = load_config().ssp
         parser = subparsers.add_parser(self.name, help=self.help)
-        parser.add_argument("--url", default=DEFAULT_SSP_URL, help="Traffic page URL")
-        parser.add_argument("--session", default="ssp", help="agent-browser session id")
+        parser.add_argument("--url", default=cfg.url, help="Traffic page URL")
+        parser.add_argument("--session", default=cfg.session, help="agent-browser session id")
         parser.add_argument(
             "--max-retries",
             type=int,
@@ -55,6 +55,8 @@ class SSPSource(SourcePlugin):
         )
 
     def run(self, args: argparse.Namespace, console: Console) -> int:
+        cfg = load_config().ssp
+
         if not is_installed():
             console.print("[bold red]agent-browser is not installed or not in PATH[/bold red]")
             return 1
@@ -102,6 +104,10 @@ class SSPSource(SourcePlugin):
             console.print("[bold red]No payload returned from SSP source[/bold red]")
             return 1
 
+        if cfg.account:
+            payload["account"] = cfg.account
+        payload["domain"] = cfg.default_domain or "ssp"
+
         render_ssp_output(console, payload)
         return 0
 
@@ -111,9 +117,11 @@ def render_ssp_output(console: Console, payload: dict[str, Any]) -> None:
     account = payload.get("account", "unknown")
     extracted_at = payload.get("extractedAt", "unknown")
     row_count = payload.get("rowCount", 0)
+    domain = payload.get("domain", "ssp")
 
     summary = (
         f"source: {source}\n"
+        f"domain: {domain}\n"
         f"account: {account}\n"
         f"rows: {row_count}\n"
         f"extracted_at: {extracted_at}"

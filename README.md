@@ -1,4 +1,4 @@
-# remains
+# Kazu (数)
 
 A Python CLI managed by uv that fetches usage statistics from web pages via agent-browser.
 
@@ -18,11 +18,15 @@ uv sync
 ## Usage
 
 ```bash
-uv run remains ssp
+uv run kazu ssp
 ```
 
-Optional arguments:
+## Configuration
 
-```bash
-uv run remains ssp --url https://s1.thefew01.top/#/traffic --session ssp
-```
+The app uses built-in defaults when no config file exists.
+
+If you want a persistent config file, create one under the platform config directory.
+
+- Linux: `~/.config/kazu/config.toml`
+- macOS: `~/Library/Application Support/kazu/config.toml`
+- Windows: `%APPDATA%\\KokomiNetwork\\kazu\\config.toml`
