@@ -1,0 +1,18 @@
+{
+  "description": "Run one repository-wide Ruff batch when a Codex turn stops.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/ruff_stop.py\"",
+            "commandWindows": "powershell -NoProfile -Command \"$root = git rev-parse --show-toplevel; & python (Join-Path $root '.codex/hooks/ruff_stop.py')\"",
+            "timeout": 10,
+            "statusMessage": "Formatting and linting repository Python code"
+          }
+        ]
+      }
+    ]
+  }
+}
