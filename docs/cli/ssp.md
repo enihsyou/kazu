@@ -36,8 +36,11 @@ copy(`Bearer ${token}`);
 authorization = "Bearer <credential>"
 ```
 
-用户配置文件位置：
+## 内置加密配置来源
 
-- Linux：`~/.config/kazu/config.toml`
-- macOS：`~/Library/Application Support/KokomiNetwork/kazu/config.toml`
-- Windows：`%LOCALAPPDATA%\\KokomiNetwork\\kazu\\config.toml`
+`BOOTSTRAP_MASTER_KEY` 取自首页加载的 `sec.js`。脚本中的 32 位小写字母数字字符串可用
+`:'\\b[a-z0-9]{32}\\b',` 的等价模式定位。
+
+`SECURE_SETTING` 取自 `https://s1.thefew01.top/` 响应中的
+`<meta name="secure-setting" content="...">`，无需登录。首页同时提供 `sec.js` 的链接。
+`tests/test_ssp_bootstrap.py` 会在网络可用时请求这两个公开资源，并验证它们仍与内置常量一致。
