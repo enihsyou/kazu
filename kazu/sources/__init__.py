@@ -9,13 +9,13 @@ __all__ = ["SourcePlugin", "discover_sources", "get_sources"]
 
 
 def discover_sources() -> None:
-	for module_info in pkgutil.iter_modules(__path__):
-		name = module_info.name
-		if name.startswith("_") or name in {"base"}:
-			continue
-		importlib.import_module(f"{__name__}.{name}")
+    for module_info in pkgutil.iter_modules(__path__):
+        name = module_info.name
+        if name.startswith("_") or name in {"base"}:
+            continue
+        importlib.import_module(f"{__name__}.{name}")
 
 
 def get_sources() -> list[SourcePlugin]:
-	discover_sources()
-	return SourcePlugin.create_all()
+    discover_sources()
+    return SourcePlugin.create_all()

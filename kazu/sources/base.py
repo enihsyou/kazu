@@ -10,7 +10,7 @@ from rich.console import Console
 class SourcePlugin(ABC):
     name: ClassVar[str]
     help: ClassVar[str]
-    _registry: ClassVar[dict[str, type["SourcePlugin"]]] = {}
+    _registry: ClassVar[dict[str, type[SourcePlugin]]] = {}
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -28,11 +28,13 @@ class SourcePlugin(ABC):
         SourcePlugin._registry[name] = cls
 
     @classmethod
-    def create_all(cls) -> list["SourcePlugin"]:
+    def create_all(cls) -> list[SourcePlugin]:
         return [plugin_cls() for plugin_cls in cls._registry.values()]
 
     @abstractmethod
-    def register_parser(self, subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    def register_parser(
+        self, subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
+    ) -> None:
         raise NotImplementedError
 
     @abstractmethod

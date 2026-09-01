@@ -5,15 +5,14 @@ import sys
 
 from rich.console import Console
 
-from kazu.config import APP_AUTHOR, APP_NAME
+from kazu.config import APP_NAME
 from kazu.sources import get_sources
 from kazu.sources.base import SourcePlugin
 
 
 def build_parser() -> tuple[argparse.ArgumentParser, dict[str, SourcePlugin]]:
     parser = argparse.ArgumentParser(
-        prog=APP_NAME,
-        description="Scrape usage statistics from web sources via agent-browser",
+        prog=APP_NAME, description="Collect structured usage statistics from configured sources"
     )
 
     subparsers = parser.add_subparsers(dest="command")

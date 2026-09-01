@@ -1,130 +1,146 @@
 from __future__ import annotations
 
 import argparse
-from typing import Any
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from decimal import Decimal
+from pathlib import Path
 
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 
-from kazu.agent_browser import is_installed, parse_json_output, run_agent_browser
-from kazu.config import load_config
+from kazu.config import get_config_path, load_config
+from kazu.lib.sspgateway import (
+    GatewayTrace,
+    SSPGateway,
+    SSPGatewayError,
+    TrafficLogResult,
+    TrafficRecord,
+)
 from kazu.sources.base import SourcePlugin
 
-SSP_EVAL_SCRIPT = """(() => {
-  const rows = Array.from(document.querySelectorAll('table tbody tr')).map((tr, i) => {
-    const cells = Array.from(tr.querySelectorAll('td')).map((td) => (td.textContent || '').trim());
-    return {
-      index: i + 1,
-      date: cells[0] || null,
-      actualUpload: cells[1] || null,
-      actualDownload: cells[2] || null,
-      billingMultiplier: cells[3] || null,
-      total: cells[4] || null
-    };
-  });
+_DOCUMENTATION_PATH = Path(__file__).resolve().parents[2] / "docs" / "cli" / "ssp.md"
 
-  const accountNode = Array.from(document.querySelectorAll('span')).find((n) => /@/.test((n.textContent || '').trim()));
 
-  return {
-    source: 'ssp-traffic',
-    extractedAt: new Date().toISOString(),
-    title: document.title,
-    url: location.href,
-    account: accountNode ? accountNode.textContent.trim() : null,
-    rowCount: rows.length,
-    rows
-  };
-})()"""
+@dataclass(frozen=True)
+class SSPTrafficReport:
+    domain: str
+    account: str
+    extracted_at: datetime
+    records: tuple[TrafficRecord, ...]
+
+
+class _SSPHelpAction(argparse.Action):
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        del namespace, values, option_string
+        Console().print(Markdown(_load_documentation()))
+        parser.exit()
 
 
 class SSPSource(SourcePlugin):
     name = "ssp"
-    help = "Fetch SSP traffic statistics"
+    help = "Fetch SSP traffic statistics through the encrypted API gateway"
 
-    def register_parser(self, subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    def register_parser(
+        self, subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
+    ) -> None:
         cfg = load_config().ssp
-        parser = subparsers.add_parser(self.name, help=self.help)
-        parser.add_argument("--url", default=cfg.url, help="Traffic page URL")
-        parser.add_argument("--session", default=cfg.session, help="agent-browser session id")
+        parser = subparsers.add_parser(self.name, add_help=False, help=self.help)
         parser.add_argument(
-            "--max-retries",
-            type=int,
-            default=5,
-            help="Retry times when table rows are empty after opening page",
+            "-h",
+            "--help",
+            action=_SSPHelpAction,
+            nargs=0,
+            help="Show SSP usage documentation",
+        )
+        parser.add_argument(
+            "--authorization",
+            default=None,
+            help="Complete Bearer authorization value (overrides config)",
+        )
+        parser.add_argument(
+            "--timeout", type=float, default=cfg.timeout, help="Request timeout in seconds"
+        )
+        parser.add_argument(
+            "--verbose",
+            action="store_true",
+            help="Show redacted HTTP request and response transcripts",
         )
 
     def run(self, args: argparse.Namespace, console: Console) -> int:
         cfg = load_config().ssp
+        authorization = (
+            args.authorization if args.authorization is not None else cfg.authorization
+        ).strip()
+        if not authorization:
+            console.print("[bold red]SSP Authorization is required.[/bold red]")
+            console.print(
+                "Pass [cyan]--authorization[/cyan] or set "
+                f"[cyan]sources.ssp.authorization[/cyan] in [cyan]{get_config_path()}[/cyan]. "
+                "Use a complete value such as [cyan]Bearer <credential>[/cyan]."
+            )
+            return 2
 
-        if not is_installed():
-            console.print("[bold red]agent-browser is not installed or not in PATH[/bold red]")
+        trace = (lambda item: render_gateway_trace(console, item)) if args.verbose else None
+        try:
+            with SSPGateway(
+                authorization,
+                api_base_url=cfg.api_base_url,
+                traffic_endpoint=cfg.traffic_endpoint,
+                gateway_endpoints=cfg.gateway_endpoints,
+                timeout=args.timeout,
+                trace=trace,
+            ) as client:
+                traffic = client.get_traffic_log()
+        except (SSPGatewayError, ValueError) as exc:
+            console.print(f"[bold red]Unable to fetch SSP traffic:[/bold red] {exc}")
             return 1
 
-        shared_args: list[str] = []
-        if args.session:
-            shared_args.extend(["--session", args.session])
-
-        open_result = run_agent_browser([*shared_args, "open", args.url])
-        if open_result.returncode != 0:
-            console.print("[bold red]Failed to open SSP page with agent-browser[/bold red]")
-            if open_result.stderr.strip():
-                console.print(open_result.stderr.strip())
-            elif open_result.stdout.strip():
-                console.print(open_result.stdout.strip())
-            return 1
-
-        payload: dict[str, Any] | None = None
-        retries = max(1, args.max_retries)
-
-        for attempt in range(retries):
-            eval_result = run_agent_browser([*shared_args, "eval", SSP_EVAL_SCRIPT])
-            if eval_result.returncode != 0:
-                console.print("[bold red]Failed to evaluate SSP page script[/bold red]")
-                if eval_result.stderr.strip():
-                    console.print(eval_result.stderr.strip())
-                elif eval_result.stdout.strip():
-                    console.print(eval_result.stdout.strip())
-                return 1
-
-            try:
-                payload = parse_json_output(eval_result.stdout)
-            except ValueError as exc:
-                console.print(f"[bold red]{exc}[/bold red]")
-                return 1
-
-            row_count = payload.get("rowCount", 0)
-            if isinstance(row_count, int) and row_count > 0:
-                break
-
-            if attempt < retries - 1:
-                run_agent_browser([*shared_args, "wait", "800"])
-
-        if payload is None:
-            console.print("[bold red]No payload returned from SSP source[/bold red]")
-            return 1
-
-        if cfg.account:
-            payload["account"] = cfg.account
-        payload["domain"] = cfg.default_domain or "ssp"
-
-        render_ssp_output(console, payload)
+        report = SSPTrafficReport(
+            domain=cfg.domain or "ssp",
+            account=_account_label(traffic),
+            extracted_at=datetime.now(tz=UTC),
+            records=traffic.records,
+        )
+        render_ssp_output(console, report)
         return 0
 
 
-def render_ssp_output(console: Console, payload: dict[str, Any]) -> None:
-    source = payload.get("source", "ssp-traffic")
-    account = payload.get("account", "unknown")
-    extracted_at = payload.get("extractedAt", "unknown")
-    row_count = payload.get("rowCount", 0)
-    domain = payload.get("domain", "ssp")
+def _account_label(traffic: TrafficLogResult) -> str:
+    for record in traffic.records:
+        if record.user_id is not None:
+            return f"user:{record.user_id}"
+    return "unknown"
 
+
+def _load_documentation() -> str:
+    try:
+        return _DOCUMENTATION_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"Unable to load SSP documentation: {_DOCUMENTATION_PATH}") from exc
+
+
+def render_gateway_trace(console: Console, trace: GatewayTrace) -> None:
+    console.print(Syntax(trace.request_http, "http", theme="ansi_dark", word_wrap=True))
+    console.print(Syntax(trace.response_http, "http", theme="ansi_dark", word_wrap=True))
+
+
+def render_ssp_output(console: Console, report: SSPTrafficReport) -> None:
     summary = (
-        f"source: {source}\n"
-        f"domain: {domain}\n"
-        f"account: {account}\n"
-        f"rows: {row_count}\n"
-        f"extracted_at: {extracted_at}"
+        "source: ssp-traffic\n"
+        f"domain: {report.domain}\n"
+        f"account: {report.account}\n"
+        f"rows: {len(report.records)}\n"
+        f"extracted_at: {report.extracted_at.isoformat()}"
     )
     console.print(Panel.fit(summary, title="SSP Traffic Summary", border_style="cyan"))
 
@@ -135,19 +151,36 @@ def render_ssp_output(console: Console, payload: dict[str, Any]) -> None:
     table.add_column("Multiplier", style="yellow", no_wrap=True)
     table.add_column("Total", style="bold", no_wrap=True)
 
-    rows = payload.get("rows", [])
-    if not isinstance(rows, list):
-        raise ValueError("payload.rows is not a list")
-
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
+    for record in report.records:
         table.add_row(
-            str(row.get("date", "")),
-            str(row.get("actualUpload", "")),
-            str(row.get("actualDownload", "")),
-            str(row.get("billingMultiplier", "")),
-            str(row.get("total", "")),
+            _format_datetime(record.recorded_at),
+            _format_bytes(record.upload_bytes),
+            _format_bytes(record.download_bytes),
+            _format_multiplier(record.multiplier),
+            _format_bytes(record.billed_bytes),
         )
-
     console.print(table)
+
+
+def _format_datetime(value: datetime | None) -> str:
+    return value.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z") if value is not None else ""
+
+
+def _format_multiplier(value: Decimal | None) -> str:
+    return f"{value:f}x" if value is not None else ""
+
+
+def _format_bytes(value: int | Decimal | None) -> str:
+    if value is None:
+        return ""
+    size = Decimal(value)
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    unit = units[0]
+    for candidate in units:
+        unit = candidate
+        if abs(size) < 1024 or candidate == units[-1]:
+            break
+        size /= 1024
+    if unit == "B" and size == size.to_integral():
+        return f"{int(size)} {unit}"
+    return f"{size.quantize(Decimal('0.01'))} {unit}"

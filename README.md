@@ -1,13 +1,11 @@
 # Kazu (数)
 
-A Python CLI managed by uv that fetches usage statistics from web pages via agent-browser.
+A Python CLI managed by uv that collects structured usage statistics from read-only APIs.
 
 ## Requirements
 
 - Python 3.11+
 - uv
-- agent-browser installed and available in PATH
-- Browser authentication already completed by the user
 
 ## Setup
 
@@ -18,7 +16,7 @@ uv sync
 ## Usage
 
 ```bash
-uv run kazu ssp
+uv run kazu --help
 ```
 
 ## Configuration

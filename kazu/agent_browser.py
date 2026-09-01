@@ -34,7 +34,9 @@ def parse_json_output(raw: str) -> dict[str, Any]:
         try:
             nested = json.loads(data)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"agent-browser returned JSON string but inner payload is invalid: {data}") from exc
+            raise ValueError(
+                f"agent-browser returned JSON string but inner payload is invalid: {data}"
+            ) from exc
         if not isinstance(nested, dict):
             raise ValueError("Parsed payload is not an object")
         return nested

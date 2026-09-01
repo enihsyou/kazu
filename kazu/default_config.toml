@@ -9,11 +9,15 @@ token = ""
 org = ""
 
 [sources.ssp]
-# Logical domain label for this source
-default_domain = "ssp"
-# Source traffic page
-url = "https://s1.thefew01.top/#/traffic"
-# agent-browser session id
-session = "ssp"
-# Optional account override (empty means use scraped account)
-account = ""
+# Complete HTTP Authorization value; use the Bearer scheme and a non-empty credential.
+authorization = ""
+# Base URL of the read-only SSP API.
+api_base_url = "https://s1.thefew01.top/api/v1"
+# Read-only traffic-log route. It must end with user/stat/getTrafficLog.
+traffic_endpoint = "user/stat/getTrafficLog"
+# Encrypted gateway endpoints, tried in order only after transport failures.
+gateway_endpoints = ["https://x1.thecores.top/"]
+# Logical domain label for exported records.
+domain = "ssp"
+# Request timeout in seconds.
+timeout = 15.0

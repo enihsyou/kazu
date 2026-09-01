@@ -1,10 +1,12 @@
 [project]
 name = "kazu"
 version = "0.1.0"
-description = "数 (kazu) — CLI for scraping usage stats from web sources via agent-browser"
+description = "数 (kazu) — CLI for collecting structured usage statistics"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "cryptography>=45.0.0",
+  "httpx>=0.28.0",
   "platformdirs>=4.10.0",
   "rich>=13.7.0",
 ]

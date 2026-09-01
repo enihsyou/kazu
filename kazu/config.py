@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
-import tomllib
 from platformdirs import user_config_path
-
 
 APP_NAME = "kazu"
 APP_AUTHOR = "KokomiNetwork"
@@ -15,85 +14,101 @@ APP_AUTHOR = "KokomiNetwork"
 
 @dataclass(frozen=True)
 class InfluxDB3Config:
-	host: str
-	database: str
-	token: str
-	org: str
+    host: str
+    database: str
+    token: str
+    org: str
 
 
 @dataclass(frozen=True)
 class SSPConfig:
-	default_domain: str
-	url: str
-	session: str
-	account: str
+    authorization: str
+    api_base_url: str
+    traffic_endpoint: str
+    gateway_endpoints: tuple[str, ...]
+    domain: str
+    timeout: float
 
 
 @dataclass(frozen=True)
 class AppConfig:
-	influxdb3: InfluxDB3Config
-	ssp: SSPConfig
+    influxdb3: InfluxDB3Config
+    ssp: SSPConfig
 
 
 def _read_default_config_text() -> str:
-	return resources.files(APP_NAME).joinpath("default_config.toml").read_text(encoding="utf-8")
+    return resources.files(APP_NAME).joinpath("default_config.toml").read_text(encoding="utf-8")
 
 
 DEFAULT_CONFIG_TOML = _read_default_config_text()
-
 DEFAULT_CONFIG_DATA: dict[str, Any] = tomllib.loads(DEFAULT_CONFIG_TOML)
 
 
 def get_config_path() -> Path:
-	config_dir = user_config_path(appname=APP_NAME, appauthor=APP_AUTHOR, ensure_exists=False)
-	return config_dir / "config.toml"
+    config_dir = user_config_path(appname=APP_NAME, appauthor=APP_AUTHOR, ensure_exists=False)
+    return config_dir / "config.toml"
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
-	return value if isinstance(value, dict) else {}
+    return value if isinstance(value, dict) else {}
 
 
 def _as_str(value: Any) -> str:
-	return value if isinstance(value, str) else ""
+    return value if isinstance(value, str) else ""
+
+
+def _as_str_tuple(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value if isinstance(item, str) and item.strip())
+
+
+def _as_positive_float(value: Any, default: float) -> float:
+    if isinstance(value, int | float) and not isinstance(value, bool) and value > 0:
+        return float(value)
+    return default
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-	result: dict[str, Any] = dict(base)
-	for key, value in override.items():
-		base_value = result.get(key)
-		if isinstance(base_value, dict) and isinstance(value, dict):
-			result[key] = _deep_merge(base_value, value)
-		else:
-			result[key] = value
-	return result
+    result: dict[str, Any] = dict(base)
+    for key, value in override.items():
+        base_value = result.get(key)
+        if isinstance(base_value, dict) and isinstance(value, dict):
+            result[key] = _deep_merge(base_value, value)
+        else:
+            result[key] = value
+    return result
 
 
 def load_config() -> AppConfig:
-	path = get_config_path()
-	user_data: dict[str, Any] = {}
+    user_data = _load_user_config()
+    merged = _deep_merge(DEFAULT_CONFIG_DATA, user_data)
+    influx = _as_dict(merged.get("influxdb3"))
+    ssp = _as_dict(_as_dict(merged.get("sources")).get("ssp"))
 
-	try:
-		if path.exists():
-			user_data = tomllib.loads(path.read_text(encoding="utf-8"))
-	except (OSError, tomllib.TOMLDecodeError):
-		user_data = {}
+    return AppConfig(
+        influxdb3=InfluxDB3Config(
+            host=_as_str(influx.get("host")),
+            database=_as_str(influx.get("database")),
+            token=_as_str(influx.get("token")),
+            org=_as_str(influx.get("org")),
+        ),
+        ssp=SSPConfig(
+            authorization=_as_str(ssp.get("authorization")),
+            api_base_url=_as_str(ssp.get("api_base_url")),
+            traffic_endpoint=_as_str(ssp.get("traffic_endpoint")),
+            gateway_endpoints=_as_str_tuple(ssp.get("gateway_endpoints")),
+            domain=_as_str(ssp.get("domain")),
+            timeout=_as_positive_float(ssp.get("timeout"), 15.0),
+        ),
+    )
 
-	merged = _deep_merge(DEFAULT_CONFIG_DATA, _as_dict(user_data))
-	influx = _as_dict(merged.get("influxdb3"))
-	sources = _as_dict(merged.get("sources"))
-	ssp = _as_dict(sources.get("ssp"))
 
-	return AppConfig(
-		influxdb3=InfluxDB3Config(
-			host=_as_str(influx.get("host")),
-			database=_as_str(influx.get("database")),
-			token=_as_str(influx.get("token")),
-			org=_as_str(influx.get("org")),
-		),
-		ssp=SSPConfig(
-			default_domain=_as_str(ssp.get("default_domain")),
-			url=_as_str(ssp.get("url")),
-			session=_as_str(ssp.get("session")),
-			account=_as_str(ssp.get("account")),
-		),
-	)
+def _load_user_config() -> dict[str, Any]:
+    path = get_config_path()
+    try:
+        if path.exists():
+            return _as_dict(tomllib.loads(path.read_text(encoding="utf-8")))
+    except (OSError, tomllib.TOMLDecodeError):
+        pass
+    return {}
