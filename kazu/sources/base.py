@@ -4,8 +4,6 @@ import argparse
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
-from rich.console import Console
-
 
 class SourcePlugin(ABC):
     name: ClassVar[str]
@@ -35,8 +33,4 @@ class SourcePlugin(ABC):
     def register_parser(
         self, subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
     ) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def run(self, args: argparse.Namespace, console: Console) -> int:
         raise NotImplementedError

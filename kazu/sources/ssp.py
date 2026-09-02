@@ -234,6 +234,7 @@ class SSPSource(SourcePlugin):
         cfg = load_config().ssp
         parser = subparsers.add_parser(self.name, help=self.help, description=self.help)
         self._parser = parser
+        parser.set_defaults(func=self._show_help)
         parser.add_argument(
             "--docs",
             action=_SSPHelpAction,
@@ -241,12 +242,13 @@ class SSPSource(SourcePlugin):
             help="Show the full SSP usage documentation",
         )
 
-        command_parsers = parser.add_subparsers(dest="ssp_command")
+        command_parsers = parser.add_subparsers()
         get_parser = command_parsers.add_parser(
             "get",
             help="Fetch and display SSP traffic statistics",
             description="Fetch and display SSP traffic statistics in a terminal table.",
         )
+        get_parser.set_defaults(func=self._run_get)
         _add_gateway_arguments(get_parser, cfg.timeout)
         metrics_parser = command_parsers.add_parser(
             "metrics",
@@ -256,6 +258,7 @@ class SSPSource(SourcePlugin):
                 "daily traffic records to InfluxDB 3."
             ),
         )
+        metrics_parser.set_defaults(func=self._run_metrics)
         _add_gateway_arguments(metrics_parser, cfg.timeout)
         metrics_parser.add_argument(
             "--output",
@@ -268,18 +271,14 @@ class SSPSource(SourcePlugin):
             help="Persist daily traffic records to the configured InfluxDB 3 server",
         )
 
-    def run(self, args: argparse.Namespace, console: Console) -> int:
-        command = getattr(args, "ssp_command", None)
-        if command == "metrics":
-            return self._run_metrics(args, console)
-        if command == "get":
-            return self._run_get(args, console)
-
+    def _show_help(self, args: argparse.Namespace) -> int:
+        del args
         if self._parser is not None:
-            self._parser.print_help(file=console.file)
+            self._parser.print_help()
         return EXIT_SUCCESS
 
-    def _run_get(self, args: argparse.Namespace, console: Console) -> int:
+    def _run_get(self, args: argparse.Namespace) -> int:
+        console = Console()
         traffic = _fetch_traffic(args, console)
         if traffic is None:
             return EXIT_FAILURE if _authorization(args) else EXIT_USAGE
@@ -294,7 +293,8 @@ class SSPSource(SourcePlugin):
         render_ssp_output(console, report)
         return EXIT_SUCCESS
 
-    def _run_metrics(self, args: argparse.Namespace, console: Console) -> int:
+    def _run_metrics(self, args: argparse.Namespace) -> int:
+        console = Console()
         error_console = Console(stderr=True)
         trace_console = error_console if args.verbose else console
         traffic = _fetch_traffic(args, trace_console, error_console=error_console)
