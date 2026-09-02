@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 
@@ -26,13 +26,26 @@ def _repository_root() -> Path:
     return Path(result.stdout.strip()).resolve()
 
 
-def _ruff_command(repository: Path) -> list[str]:
-    return ["uv", "run", "ruff"]
+def _normalize_paths(lines: list[str]) -> list[str]:
+    if sys.platform != "win32":
+        return lines
+
+    normalized: list[str] = []
+    for line in lines:
+        path, separator, details = line.partition(":")
+        if not separator:
+            normalized.append(line)
+            continue
+        normalized.append(f"{PureWindowsPath(path).as_posix()}:{details}")
+    return normalized
 
 
 def _run_ruff(repository: Path) -> tuple[bool, str]:
-    command = _ruff_command(repository)
-    steps = (("format", "."), ("check", "--fix", "."), ("check", "."))
+    command = ["uv", "run", "ruff"]
+    steps = (
+        ("format", "."),
+        ("check", "--quiet", "--respect-gitignore", "--output-format=concise"),
+    )
     for arguments in steps:
         result = subprocess.run(
             [*command, *arguments],
@@ -42,9 +55,9 @@ def _run_ruff(repository: Path) -> tuple[bool, str]:
             text=True,
         )
         if result.returncode:
-            detail = (result.stderr or result.stdout).strip().splitlines()
-            summary = detail[-1] if detail else f"exit code {result.returncode}"
-            return False, f"Ruff {' '.join(arguments)} failed: {summary}"
+            detail = (result.stderr or result.stdout).strip()
+            detail = "\n".join(_normalize_paths(detail.splitlines()))
+            return False, f"Ruff `{arguments[0]}` failed:\n{detail}"
     return True, ""
 
 
