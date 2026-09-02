@@ -109,24 +109,19 @@ class APIResult:
 
 @dataclass(frozen=True)
 class TrafficRecord:
-    user_id: int | str | None
-    recorded_at: datetime | None
-    upload_bytes: int | None
-    download_bytes: int | None
-    multiplier: Decimal | None
-    server_name: str | None
+    user_id: int | str
+    recorded_at: datetime
+    upload_bytes: int
+    download_bytes: int
+    multiplier: Decimal
     raw: Mapping[str, Any]
 
     @property
-    def total_bytes(self) -> int | None:
-        if self.upload_bytes is None or self.download_bytes is None:
-            return None
+    def total_bytes(self) -> int:
         return self.upload_bytes + self.download_bytes
 
     @property
-    def billed_bytes(self) -> Decimal | None:
-        if self.total_bytes is None or self.multiplier is None:
-            return None
+    def billed_bytes(self) -> Decimal:
         return Decimal(self.total_bytes) * self.multiplier
 
 
@@ -503,40 +498,39 @@ def _parse_traffic_record(item: Mapping[str, Any]) -> TrafficRecord:
         upload_bytes=_as_int(item.get("u")),
         download_bytes=_as_int(item.get("d")),
         multiplier=_as_decimal(item.get("server_rate")),
-        server_name=_first_string(item, "server_name", "server"),
         raw=dict(item),
     )
 
 
-def _as_identifier(value: Any) -> int | str | None:
+def _as_identifier(value: Any) -> int | str:
     if isinstance(value, bool):
-        return None
+        raise ValueError("SSP traffic record has an invalid user_id")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and value:
+    if isinstance(value, str) and value.strip():
         return value
-    return None
+    raise ValueError("SSP traffic record is missing user_id")
 
 
-def _as_datetime(value: Any) -> datetime | None:
+def _as_datetime(value: Any) -> datetime:
     if isinstance(value, int | float) and not isinstance(value, bool):
         seconds = float(value) / 1000 if value > 10_000_000_000 else float(value)
         try:
             return datetime.fromtimestamp(seconds, tz=UTC)
         except (OverflowError, OSError, ValueError):
-            return None
+            raise ValueError("SSP traffic record has an invalid record_at") from None
     if isinstance(value, str) and value:
         try:
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
-            return None
+            raise ValueError("SSP traffic record has an invalid record_at") from None
         return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
-    return None
+    raise ValueError("SSP traffic record is missing record_at")
 
 
-def _as_int(value: Any) -> int | None:
+def _as_int(value: Any) -> int:
     if isinstance(value, bool):
-        return None
+        raise ValueError("SSP traffic record has an invalid traffic value")
     if isinstance(value, int):
         return value
     if isinstance(value, float) and value.is_integer():
@@ -545,25 +539,20 @@ def _as_int(value: Any) -> int | None:
         try:
             return int(value)
         except ValueError:
-            return None
-    return None
+            pass
+    raise ValueError("SSP traffic record has an invalid traffic value")
 
 
-def _as_decimal(value: Any) -> Decimal | None:
+def _as_decimal(value: Any) -> Decimal:
     if isinstance(value, bool) or value is None:
-        return None
+        raise ValueError("SSP traffic record is missing server_rate")
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
     except InvalidOperation:
-        return None
-
-
-def _first_string(value: Mapping[str, Any], *keys: str) -> str | None:
-    for key in keys:
-        item = value.get(key)
-        if isinstance(item, str) and item:
-            return item
-    return None
+        raise ValueError("SSP traffic record has an invalid server_rate") from None
+    if not result.is_finite():
+        raise ValueError("SSP traffic record has an invalid server_rate")
+    return result
 
 
 def _request_trace(

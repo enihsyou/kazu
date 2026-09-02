@@ -1,5 +1,6 @@
-"""Reusable protocol clients and structured data models."""
+"""Reusable protocol clients, data models, and CLI helpers."""
 
+from kazu.lib.clidocs import load_documentation, render_documentation
 from kazu.lib.sspgateway import (
     APIResult,
     GatewayHTTPError,
@@ -11,15 +12,3 @@ from kazu.lib.sspgateway import (
     TrafficLogResult,
     TrafficRecord,
 )
-
-__all__ = [
-    "APIResult",
-    "GatewayHTTPError",
-    "GatewayNetworkError",
-    "GatewayProtocolError",
-    "GatewayTrace",
-    "SSPGateway",
-    "SSPGatewayError",
-    "TrafficLogResult",
-    "TrafficRecord",
-]

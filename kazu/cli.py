@@ -6,6 +6,7 @@ import sys
 from rich.console import Console
 
 from kazu.config import APP_NAME
+from kazu.exitcodes import EXIT_FAILURE, EXIT_SUCCESS
 from kazu.sources import get_sources
 from kazu.sources.base import SourcePlugin
 
@@ -33,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     arg_list = list(sys.argv[1:] if argv is None else argv)
     if not arg_list:
         parser.print_help()
-        return 0
+        return EXIT_SUCCESS
 
     args = parser.parse_args(arg_list)
     console = Console()
@@ -41,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     source = source_map.get(args.command)
     if source is None:
         parser.print_help()
-        return 1
+        return EXIT_FAILURE
 
     return source.run(args, console)
 

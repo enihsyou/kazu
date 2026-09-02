@@ -7,6 +7,8 @@ database = ""
 token = ""
 # Optional org/tenant
 org = ""
+# Query and write timeout in seconds.
+timeout = 15.0
 
 [sources.ssp]
 # Complete HTTP Authorization value; use the Bearer scheme and a non-empty credential.

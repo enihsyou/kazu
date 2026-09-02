@@ -18,6 +18,7 @@ class InfluxDB3Config:
     database: str
     token: str
     org: str
+    timeout: float
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ def load_config() -> AppConfig:
             database=_as_str(influx.get("database")),
             token=_as_str(influx.get("token")),
             org=_as_str(influx.get("org")),
+            timeout=_as_positive_float(influx.get("timeout"), 15.0),
         ),
         ssp=SSPConfig(
             authorization=_as_str(ssp.get("authorization")),
