@@ -44,7 +44,7 @@ def _run_ruff(repository: Path) -> tuple[bool, str]:
     command = ["uv", "run", "ruff"]
     steps = (
         ("format", "."),
-        ("check", "--quiet", "--respect-gitignore", "--output-format=concise"),
+        ("check", "--quiet", "--respect-gitignore", "--output-format=concise", "--fix"),
     )
     for arguments in steps:
         result = subprocess.run(

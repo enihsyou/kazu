@@ -9,32 +9,51 @@ from typing import Any
 from platformdirs import user_config_path
 
 APP_NAME = "kazu"
+"""Application name used for configuration and command-line metadata."""
 APP_AUTHOR = "KokomiNetwork"
+"""Application author used when resolving the user configuration directory."""
 
 
 @dataclass(frozen=True)
 class InfluxDB3Config:
+    """Configuration values for the optional InfluxDB 3 writer."""
+
     host: str
+    """InfluxDB 3 server URL."""
     database: str
+    """InfluxDB 3 database name."""
     token: str
-    org: str
+    """InfluxDB 3 authentication token."""
     timeout: float
+    """InfluxDB 3 request timeout in seconds."""
 
 
 @dataclass(frozen=True)
 class SSPConfig:
+    """Configuration values for the SSP traffic source."""
+
     authorization: str
+    """Complete SSP authorization header value."""
     api_base_url: str
+    """SSP API base URL."""
     traffic_endpoint: str
+    """SSP traffic endpoint path."""
     gateway_endpoints: tuple[str, ...]
+    """Encrypted gateway endpoint URLs."""
     domain: str
+    """Display domain associated with the source."""
     timeout: float
+    """SSP request timeout in seconds."""
 
 
 @dataclass(frozen=True)
 class AppConfig:
+    """Complete application configuration."""
+
     influxdb3: InfluxDB3Config
+    """Optional InfluxDB 3 configuration."""
     ssp: SSPConfig
+    """SSP source configuration."""
 
 
 def _read_default_config_text() -> str:
@@ -42,10 +61,13 @@ def _read_default_config_text() -> str:
 
 
 DEFAULT_CONFIG_TOML = _read_default_config_text()
+"""Built-in TOML configuration text."""
 DEFAULT_CONFIG_DATA: dict[str, Any] = tomllib.loads(DEFAULT_CONFIG_TOML)
+"""Parsed built-in configuration values."""
 
 
 def get_config_path() -> Path:
+    """Return the path to the user configuration file."""
     config_dir = user_config_path(appname=APP_NAME, appauthor=APP_AUTHOR, ensure_exists=False)
     return config_dir / "config.toml"
 
@@ -82,18 +104,18 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 
 def load_config() -> AppConfig:
+    """Load and validate merged built-in and user configuration values."""
     user_data = _load_user_config()
     merged = _deep_merge(DEFAULT_CONFIG_DATA, user_data)
-    influx = _as_dict(merged.get("influxdb3"))
+    influxdb = _as_dict(merged.get("influxdb3"))
     ssp = _as_dict(_as_dict(merged.get("sources")).get("ssp"))
 
     return AppConfig(
         influxdb3=InfluxDB3Config(
-            host=_as_str(influx.get("host")),
-            database=_as_str(influx.get("database")),
-            token=_as_str(influx.get("token")),
-            org=_as_str(influx.get("org")),
-            timeout=_as_positive_float(influx.get("timeout"), 15.0),
+            host=_as_str(influxdb.get("host")),
+            database=_as_str(influxdb.get("database")),
+            token=_as_str(influxdb.get("token")),
+            timeout=_as_positive_float(influxdb.get("timeout"), 15.0),
         ),
         ssp=SSPConfig(
             authorization=_as_str(ssp.get("authorization")),

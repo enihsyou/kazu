@@ -1,12 +1,10 @@
 [influxdb3]
-# InfluxDB 3 endpoint, e.g. https://influx.example.com
+# InfluxDB 3 endpoint, e.g. https://influxdb.example.com
 host = ""
 # Destination database
 database = ""
-# Write token
+# Token with query and write access to the database; checked with SELECT 1 on startup.
 token = ""
-# Optional org/tenant
-org = ""
 # Query and write timeout in seconds.
 timeout = 15.0
 

@@ -19,6 +19,18 @@ uv sync
 uv run kazu --help
 ```
 
+Serve SSP traffic metrics for Grafana Alloy:
+
+```bash
+uv run kazu ssp metrics --host 127.0.0.1 --port 9101
+```
+
+Configure SSP authorization first. This is a long-running service exposing
+`GET /metrics`, not stdout or a `.prom` textfile exporter. Add `--push-influxdb`
+to opt into InfluxDB 3 reporting after its startup database/token query check.
+See [SSP commands](docs/cli/ssp.md), [metrics and Alloy scrape configuration](docs/metrics.md),
+and [code organization](docs/architecture.md).
+
 ## Configuration
 
 The app uses built-in defaults when no config file exists.

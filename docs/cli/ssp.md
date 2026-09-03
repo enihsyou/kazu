@@ -10,8 +10,19 @@ uv run kazu ssp --docs
 uv run kazu ssp get
 uv run kazu ssp get --authorization "Bearer <credential>"
 uv run kazu ssp metrics
-uv run kazu ssp metrics --output C:\\var\\lib\\node_exporter\\textfile\\ssp.prom
+uv run kazu ssp metrics --host 0.0.0.0 --port 9101
 uv run kazu ssp metrics --push-influxdb
+```
+
+`--docs` 从安装包内的 Markdown 资源读取文档；源码/可编辑安装未包含资源时使用仓库文档。
+Docker 中可直接运行 `docker run --rm kazu:latest ssp --docs`，无需挂载源码。
+
+容器运行指标服务时，需要配置 SSP Authorization，并显式提供子命令和监听地址：
+
+```bash
+docker run --rm -p 127.0.0.1:9101:9101 \
+  -v kazu-config:/root/.config/kazu \
+  kazu:latest ssp metrics --host 0.0.0.0 --port 9101
 ```
 
 ## `get` 子命令
@@ -26,23 +37,27 @@ uv run kazu ssp metrics --push-influxdb
 
 ## `metrics` 子命令
 
-`kazu ssp metrics` 获取当前接口返回的近期每日数据，并输出 Prometheus
-exposition 格式。默认输出到标准输出，适合由 Grafana Alloy 的 textfile collector
-读取；`--output PATH` 会将内容原子化写入指定文件，并更新文件的修改时间。命令本身不
-向 Prometheus 发起推送，也不需要 Prometheus 连接配置。
+`kazu ssp metrics` 启动常驻 HTTP 服务，默认地址为
+`http://127.0.0.1:9101/metrics`，按 Ctrl+C 停止。每次 `GET /metrics` 才请求 SSP，
+由 `prometheus-client` 的 `Gauge` 构造指标并生成 Prometheus exposition 响应。
 
-默认只生成指标输出。增加 `--push-influxdb` 后，会把全部业务日数据写入 InfluxDB 3：
-当日数据按采集时刻追加，历史业务日固定写到该日最后一秒。
+推荐让 Grafana Alloy 的 `prometheus.scrape` 直接拉取 `/metrics`，不使用 textfile
+collector、Pushgateway 或定时重复启动命令。详见[采集配置示例](../metrics.md#推荐使用-grafana-alloy-采集)。
+
+默认不连接 InfluxDB。增加 `--push-influxdb` 后，启动时检查配置和数据库查询权限；
+通过后，每次成功采集的数据都会尝试写入 InfluxDB 3：当日按采集时刻追加，历史业务日
+固定写到该日最后一秒。没有 scrape 就不会产生采集或上报。
 
 选项：
 
-- `--output PATH`：将 exposition 文本原子化写入文件，而不是输出到 stdout。
-- `--push-influxdb`：启用历史业务日的 InfluxDB 3 写入；未指定时不连接 InfluxDB。
+- `--host`：监听地址，默认 `127.0.0.1`。容器内或远程 Alloy 采集时可使用 `0.0.0.0`。
+- `--port`：监听端口，默认 `9101`，范围为 `1`–`65535`。
+- `--push-influxdb`：通过启动检查后启用 InfluxDB 3 上报；未指定时不连接 InfluxDB。
 - `--authorization`：完整的 `Bearer <credential>` 文本，覆盖配置文件。
 - `--timeout`：请求超时秒数。
 - `--verbose`：显示已脱敏的 HTTP 请求与响应。
 
-当前日的三个 Gauge 名称为：
+当前三个 Gauge 名称为：
 
 ```text
 proxy_traffic_upload_bytes
@@ -51,12 +66,17 @@ proxy_traffic_deducted_bytes
 ```
 
 每个指标都有 `provider="ssp"`、`user_id` 和 `server_rate` 三个 label。`date`、
-`record_at` 和查询时间都不是 label。请求失败或当前日数据缺失时，不会把已有指标人为
-重置为零。
+`record_at` 和查询时间都不是 label。上游请求失败、当前日数据缺失或采集请求重叠时，
+`/metrics` 返回 HTTP 503，不返回旧数据或人为补零；下一次 scrape 会重新尝试。
+其他路径返回 HTTP 404。启动和上报状态通过 stderr 中的 INFO/WARNING/ERROR 日志显示。
+
+监听地址没有内置认证或 TLS；不要直接暴露到公网。
 
 ## Authorization
 
 Authorization 必须是完整的 `Bearer <credential>` 文本。
+
+令牌来源是登录后的 Local Storage `VUE_NAIVE_ACCESS_TOKEN` 键。
 
 登录少数派后，在该站点页面的浏览器开发者工具 Console 中运行下面的 JavaScript；它会将正确格式的值复制到剪贴板：
 
@@ -65,8 +85,6 @@ const token = localStorage.getItem("VUE_NAIVE_ACCESS_TOKEN");
 if (!token) throw new Error("VUE_NAIVE_ACCESS_TOKEN is not available");
 copy(`Bearer ${token}`);
 ```
-
-令牌来源是登录后的 Local Storage `VUE_NAIVE_ACCESS_TOKEN` 键。
 
 可以临时传入命令行，或保存到用户配置文件：
 
@@ -79,15 +97,25 @@ InfluxDB 3 的连接信息位于顶层 `[influxdb3]`：
 
 ```toml
 [influxdb3]
-host = "https://influx.example.com"
+host = "https://influxdb.example.com"
 database = "kazu"
-token = "<write-token>"
-org = "<optional-org>"
+token = "<query-and-write-token>"****
 timeout = 15.0
 ```
 
-这些字段只在使用 `metrics --push-influxdb` 时生效。令牌应保存在本机用户配置中，
-不要提交到仓库。
+`host`、`database`、`token` 必填；目标数据库须已存在，token 需要该库的查询与写入权限。令牌应保存在本机用户配置中，不要提交到仓库。
+
+启动行为：
+
+- 未传 `--push-influxdb`：INFO 提示未启用上报，不访问 InfluxDB。
+- 已传参数：使用配置中的 database/token 调用 `/api/v3/query_sql` 执行
+  `SELECT 1 AS ready`。成功时 INFO 提示将上报。
+- 配置不完整或检查失败：WARNING 提示不会上报，但 `/metrics` 服务继续运行；修复配置
+  后需要重启命令。启动检查不创建数据库，也不写入探测点。
+- 后续写入失败：记录 ERROR，本次指标响应不因该错误变为失败，下次采集继续尝试上报。
+
+`/ping` 只能检查服务状态，不能证明指定数据库和写入权限有效。这里的 SQL 检查验证
+数据库查询是否可用，写入权限仍由实际写入确认。
 
 ## 内置加密配置来源
 
