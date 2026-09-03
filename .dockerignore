@@ -1,0 +1,12 @@
+.git
+.codex
+.venv
+.pytest_cache
+.ruff_cache
+__pycache__
+*.py[cod]
+deobfuscator
+scripts
+tests
+AGENTS.md
+Taskfile.yml

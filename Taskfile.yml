@@ -1,6 +1,31 @@
 version: "3"
 
+vars:
+  IMAGE: kazu:latest
+
 tasks:
+  docker-build:
+    desc: Build the kazu:latest Docker image.
+    vars:
+      VERSION:
+        sh: uv version --short
+    cmds:
+      - docker build --label org.opencontainers.image.version={{.VERSION}} -t {{.IMAGE}} .
+
+  docker-run:
+    desc: Create, provision, and start the kazu Docker container.
+    vars:
+      CONTAINER: kazu-task
+    cmds:
+      - cmd: docker create --rm -t --name "{{.CONTAINER}}" -p 9101:9101 {{.IMAGE}}
+      - cmd: 'docker cp "{{env "HOME"}}/.config/kazu/config.toml" "{{.CONTAINER}}:/root/.config/kazu/config.toml"'
+        platforms: [linux]
+      - cmd: 'docker cp "{{env "HOME"}}/Library/Application Support/kazu/config.toml" "{{.CONTAINER}}:/root/.config/kazu/config.toml"'
+        platforms: [darwin]
+      - cmd: 'docker cp "{{env "APPDATA"}}\KokomiNetwork\kazu\config.toml" "{{.CONTAINER}}:/root/.config/kazu/config.toml"'
+        platforms: [windows]
+      - docker start -a "{{.CONTAINER}}"
+
   test:
     desc: Run the test suite.
     cmds:
