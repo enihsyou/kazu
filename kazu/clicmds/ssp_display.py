@@ -22,12 +22,20 @@ class SSPConsole:
         """Store the Rich console used for terminal output."""
 
     def configure_logging(self) -> None:
-        """Configure Rich logging for the CLI display."""
+        """Configure terminal rendering or unwrapped logs for redirected output."""
         logger = logging.getLogger("kazu")
         if not logger.handlers:
-            logger.addHandler(RichHandler(console=self.console, show_path=False, markup=False))
+            logger.addHandler(self._logging_handler())
         logger.setLevel(logging.INFO)
         logger.propagate = False
+
+    def _logging_handler(self) -> logging.Handler:
+        """Use Rich only when the output stream is an interactive terminal."""
+        if self.console.is_terminal:
+            return RichHandler(console=self.console, show_path=False, markup=False)
+        handler = logging.StreamHandler(self.console.file)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        return handler
 
     def missing_authorization(self) -> None:
         """Display guidance for configuring the missing SSP authorization."""
