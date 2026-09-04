@@ -5,6 +5,7 @@ import socket
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import cast
 from urllib.parse import urlsplit
 
 from prometheus_client import CONTENT_TYPE_LATEST
@@ -15,13 +16,13 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class MetricsHTTPServer(ThreadingHTTPServer):
-    """Serve only GET /metrics; drain active handlers before closing collectors."""
+    """Serve only GET /metrics without delaying process exit for active requests."""
 
-    daemon_threads = False
-    """Keep handler threads alive until their requests finish."""
+    daemon_threads = True
+    """Allow process exit while request handlers are still running."""
 
-    block_on_close = True
-    """Wait for active handler threads during server shutdown."""
+    block_on_close = False
+    """Close the listening socket without waiting for request handlers."""
 
     def __init__(self, host: str, port: int, render: Callable[[], bytes]) -> None:
         self.render = render
@@ -37,6 +38,7 @@ class MetricsHTTPServer(ThreadingHTTPServer):
     def metrics_url(self) -> str:
         """Return the URL served by the metrics endpoint."""
         host, port = self.server_address[:2]
+        host = cast(str, host)
         authority = f"[{host}]" if ":" in host else host
         return f"http://{authority}:{port}/metrics"
 
@@ -48,9 +50,6 @@ class MetricsHTTPServer(ThreadingHTTPServer):
 
 class MetricsRequestHandler(BaseHTTPRequestHandler):
     """Handle metrics endpoint requests for the metrics HTTP server."""
-
-    server: MetricsHTTPServer
-    """Reference the metrics server that owns this request handler."""
 
     timeout = 30
     """Set the request socket timeout in seconds."""
@@ -66,7 +65,7 @@ class MetricsRequestHandler(BaseHTTPRequestHandler):
             self._respond(HTTPStatus.NOT_FOUND, b"Not found. Metrics are at /metrics.\n")
             return
         try:
-            body = self.server.render()
+            body = cast(MetricsHTTPServer, self.server).render()
         except MetricsUnavailable as exc:
             self._respond(HTTPStatus.SERVICE_UNAVAILABLE, f"{exc}\n".encode())
             return

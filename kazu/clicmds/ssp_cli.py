@@ -134,7 +134,7 @@ def _serve_metrics(args: argparse.Namespace, config: AppConfig, source: SSPSourc
 
         exporter = TrafficExporter(collect, registry=registry, on_collect=reporter.report)
         server = resources.enter_context(MetricsHTTPServer(args.host, args.port, exporter.render))
-        # Bind before probing InfluxDB. On exit, drain HTTP handlers before closing clients.
+        # Bind before probing InfluxDB; close the listener before closing clients.
         reporter.start()
         _LOGGER.info("Serving SSP metrics at %s (Ctrl+C to stop).", server.metrics_url)
         server.serve_forever()
