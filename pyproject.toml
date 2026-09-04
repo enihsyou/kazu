@@ -26,6 +26,12 @@ kazu = "kazu.cli:main"
 requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "kazu/**/*" },
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["kazu"]
 

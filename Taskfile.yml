@@ -1,11 +1,11 @@
 version: "3"
 
 vars:
-  IMAGE: kazu:latest
+  IMAGE: kazu
 
 tasks:
   docker-build:
-    desc: Build the kazu:latest Docker image.
+    desc: Build the kazu Docker image.
     vars:
       VERSION:
         sh: uv version --short

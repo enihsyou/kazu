@@ -33,7 +33,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync \
         --locked \
         --no-dev \
-        --no-editable
+        --no-editable \
+        --reinstall-package kazu
 
 FROM python:3.14-slim
 
