@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Protocol
 
 
-class TrafficCollectionError(RuntimeError):
+class SubscriptionTrafficCollectionError(RuntimeError):
     """A source could not produce a valid traffic snapshot."""
 
 
@@ -38,7 +38,7 @@ class SubscriptionTrafficUsage:
 
 
 @dataclass(frozen=True)
-class TrafficSnapshot:
+class SubscriptionTrafficSnapshot:
     """Capture traffic usages observed at one collection instant."""
 
     observed_at: datetime
@@ -58,9 +58,9 @@ class TrafficSnapshot:
         return tuple(usage for usage in self.usages if usage.usage_date == self.today)
 
 
-class TrafficSource(Protocol):
+class SubscriptionTrafficSource(Protocol):
     """Define the contract for collecting provider traffic snapshots."""
 
-    def collect(self) -> TrafficSnapshot:
-        """Fetch fresh usage data, or raise TrafficCollectionError."""
+    def collect(self) -> SubscriptionTrafficSnapshot:
+        """Fetch fresh usage data, or raise SubscriptionTrafficCollectionError."""
         ...

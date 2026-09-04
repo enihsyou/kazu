@@ -11,7 +11,7 @@ from rich.table import Table
 
 from kazu.config import get_config_path
 from kazu.lib.sspgateway import GatewayTrace
-from kazu.lib.traffic import TrafficSnapshot
+from kazu.lib.traffic import SubscriptionTrafficSnapshot
 
 
 class SSPConsole:
@@ -55,7 +55,7 @@ class SSPConsole:
         self.console.print(Syntax(trace.request_http, "http", theme="ansi_dark", word_wrap=True))
         self.console.print(Syntax(trace.response_http, "http", theme="ansi_dark", word_wrap=True))
 
-    def report(self, snapshot: TrafficSnapshot, *, gateway: str) -> None:
+    def report(self, snapshot: SubscriptionTrafficSnapshot, *, gateway: str) -> None:
         """Display the collected traffic snapshot as a summary and table."""
         accounts = ", ".join(sorted({usage.user_id for usage in snapshot.usages})) or "unknown"
         summary = (

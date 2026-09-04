@@ -4,33 +4,35 @@ from prometheus_client import CollectorRegistry, Gauge
 
 from kazu.lib.traffic import SubscriptionTrafficUsage
 
-_TRAFFIC_METRICS = (
+_SUBSCRIPTION_TRAFFIC_METRICS = (
     (
-        "kazu_proxy_upload_bytes",
+        "kazu_subscription_traffic_upload_bytes",
         "upload_bytes",
         "Current business-day cumulative subscription upload traffic in bytes.",
     ),
     (
-        "kazu_proxy_download_bytes",
+        "kazu_subscription_traffic_download_bytes",
         "download_bytes",
         "Current business-day cumulative subscription download traffic in bytes.",
     ),
     (
-        "kazu_proxy_deducted_bytes",
+        "kazu_subscription_traffic_deducted_bytes",
         "deducted_bytes",
         "Current business-day cumulative subscription deducted traffic in bytes.",
     ),
 )
-_TRAFFIC_LABELS = ("provider", "user_id", "server_rate")
+_SUBSCRIPTION_TRAFFIC_LABELS = ("provider", "user_id", "server_rate")
 
 
-class TrafficMetrics:
-    """Own reusable traffic gauges for one exporter instance."""
+class SubscriptionTrafficMetrics:
+    """Own reusable subscription traffic gauges for one exporter instance."""
 
     def __init__(self, registry: CollectorRegistry) -> None:
         self._gauges = {
-            attribute: Gauge(name, description, labelnames=_TRAFFIC_LABELS, registry=registry)
-            for name, attribute, description in _TRAFFIC_METRICS
+            attribute: Gauge(
+                name, description, labelnames=_SUBSCRIPTION_TRAFFIC_LABELS, registry=registry
+            )
+            for name, attribute, description in _SUBSCRIPTION_TRAFFIC_METRICS
         }
 
     def update(self, usages: tuple[SubscriptionTrafficUsage, ...]) -> None:

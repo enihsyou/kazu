@@ -27,9 +27,9 @@ uv run kazu ssp metrics --host 127.0.0.1 --port 9101
 只输出当前业务日截至本次查询时刻的累计值，三个指标均为 Gauge：
 
 ```text
-kazu_proxy_upload_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
-kazu_proxy_download_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
-kazu_proxy_deducted_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
+kazu_subscription_traffic_upload_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
+kazu_subscription_traffic_download_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
+kazu_subscription_traffic_deducted_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
 ```
 
 它们分别表示实际上行、实际下行和扣除流量，单位都是 bytes。label 只有固定的
@@ -37,7 +37,7 @@ kazu_proxy_deducted_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
 `record_at` 或查询时间 label。Prometheus 的正常采集时间负责形成当天的时间序列；不
 进行历史日期回填，也不构造 Counter。
 
-此外，`kazu_proxy_scrape_duration_seconds` 是无 label 的 Gauge，记录本次从 SSP
+此外，`kazu_subscription_traffic_scrape_duration_seconds` 是无 label 的 Gauge，记录本次从 SSP
 抓取并规范化流量所用的秒数，不包含 InfluxDB 上报耗时。服务装配时直接使用该 Gauge
 的 `.time()` 装饰采集函数，与流量指标通过同一 registry 输出到 Prometheus，不写入 InfluxDB。
 

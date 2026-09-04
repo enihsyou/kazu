@@ -8,10 +8,14 @@ from typing import Self
 
 from kazu.config import SSPConfig
 from kazu.lib.sspgateway import SSPGateway, SSPGatewayError, TraceCallback, TrafficRecord
-from kazu.lib.traffic import SubscriptionTrafficUsage, TrafficCollectionError, TrafficSnapshot
+from kazu.lib.traffic import (
+    SubscriptionTrafficCollectionError,
+    SubscriptionTrafficSnapshot,
+    SubscriptionTrafficUsage,
+)
 
 
-def normalize_traffic(
+def normalize_subscription_traffic_usage(
     records: tuple[TrafficRecord, ...], today: date
 ) -> tuple[SubscriptionTrafficUsage, ...]:
     """Build validated daily usage values from SSP traffic records."""
@@ -92,15 +96,17 @@ class SSPSource:
         """Release the underlying SSP gateway resources."""
         self._gateway.close()
 
-    def collect(self) -> TrafficSnapshot:
+    def collect(self) -> SubscriptionTrafficSnapshot:
         """Collect and normalize the latest SSP traffic snapshot."""
         try:
             traffic = self._gateway.get_traffic_log()
         except (SSPGatewayError, ValueError) as exc:
-            raise TrafficCollectionError(f"Unable to fetch SSP traffic: {exc}") from exc
+            raise SubscriptionTrafficCollectionError(f"Unable to fetch SSP traffic: {exc}") from exc
         observed_at = datetime.now().astimezone()
         try:
-            usages = normalize_traffic(traffic.records, observed_at.date())
+            usages = normalize_subscription_traffic_usage(traffic.records, observed_at.date())
         except ValueError as exc:
-            raise TrafficCollectionError(f"Unable to normalize SSP traffic: {exc}") from exc
-        return TrafficSnapshot(observed_at=observed_at, usages=usages)
+            raise SubscriptionTrafficCollectionError(
+                f"Unable to normalize SSP traffic: {exc}"
+            ) from exc
+        return SubscriptionTrafficSnapshot(observed_at=observed_at, usages=usages)

@@ -5,8 +5,8 @@ from typing import Self
 
 from kazu.config import InfluxDB3Config
 from kazu.lib.influxdb3.client import InfluxDB3Client, InfluxDB3Error
-from kazu.lib.influxdb3.traffic import InfluxDB3DailyWriter
-from kazu.lib.traffic import TrafficSnapshot
+from kazu.lib.influxdb3.traffic import InfluxDB3SubscriptionTrafficWriter
+from kazu.lib.traffic import SubscriptionTrafficSnapshot
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class InfluxDB3Reporter:
         self._requested = enabled
         self._started = False
         self._client: InfluxDB3Client | None = None
-        self._writer: InfluxDB3DailyWriter | None = None
+        self._writer: InfluxDB3SubscriptionTrafficWriter | None = None
 
     def __enter__(self) -> Self:
         self.start()
@@ -46,13 +46,13 @@ class InfluxDB3Reporter:
                 exc,
             )
             return
-        self._writer = InfluxDB3DailyWriter(self._client)
+        self._writer = InfluxDB3SubscriptionTrafficWriter(self._client)
         _LOGGER.info(
             "InfluxDB database/token query check passed; traffic will be reported to InfluxDB. "
             "Write permission will be checked by actual writes."
         )
 
-    def report(self, snapshot: TrafficSnapshot) -> None:
+    def report(self, snapshot: SubscriptionTrafficSnapshot) -> None:
         """Report a traffic snapshot without interrupting its caller."""
         if self._writer is None:
             return

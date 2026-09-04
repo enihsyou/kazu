@@ -4,12 +4,14 @@ from datetime import UTC, date, datetime, time
 from typing import Any
 
 from kazu.lib.influxdb3.client import InfluxDB3Client, InfluxDB3Error
-from kazu.lib.traffic import SubscriptionTrafficUsage, TrafficSnapshot
+from kazu.lib.traffic import SubscriptionTrafficSnapshot, SubscriptionTrafficUsage
 
-_TRAFFIC_TABLE = "subscription_traffic_daily"
+_SUBSCRIPTION_TRAFFIC_TABLE = "subscription_traffic_daily"
 
 
-def encode_traffic_usage(usage: SubscriptionTrafficUsage, observed_at: datetime) -> str:
+def encode_subscription_traffic_usage(
+    usage: SubscriptionTrafficUsage, observed_at: datetime
+) -> str:
     """Encode one traffic usage as an InfluxDB line-protocol record."""
     tags = f"provider={_tag(usage.provider)},user_id={_tag(usage.user_id)}"
     fields = (
@@ -25,10 +27,10 @@ def encode_traffic_usage(usage: SubscriptionTrafficUsage, observed_at: datetime)
         else daily_final_time(usage.usage_date)
     )
     nanoseconds = int(timestamp.timestamp()) * 1_000_000_000 + timestamp.microsecond * 1_000
-    return f"{_TRAFFIC_TABLE},{tags} {fields} {nanoseconds}"
+    return f"{_SUBSCRIPTION_TRAFFIC_TABLE},{tags} {fields} {nanoseconds}"
 
 
-def decode_traffic_usage(
+def decode_subscription_traffic_usage(
     row: dict[str, Any], expected: SubscriptionTrafficUsage
 ) -> SubscriptionTrafficUsage:
     """Decode one InfluxDB row into a traffic usage value."""
@@ -88,13 +90,13 @@ def _string(value: Any) -> str:
     return value
 
 
-class InfluxDB3DailyWriter:
+class InfluxDB3SubscriptionTrafficWriter:
     """Append current observations; preserve immutable historical final points."""
 
     def __init__(self, client: InfluxDB3Client) -> None:
         self._client = client
 
-    def write(self, snapshot: TrafficSnapshot) -> int:
+    def write(self, snapshot: SubscriptionTrafficSnapshot) -> int:
         """Write pending current and historical traffic observations."""
         if not snapshot.usages:
             return 0
@@ -105,7 +107,7 @@ class InfluxDB3DailyWriter:
             if self._should_write(usage, snapshot.today, table_exists)
         ]
         self._client.write_lines(
-            [encode_traffic_usage(usage, snapshot.observed_at) for usage in pending]
+            [encode_subscription_traffic_usage(usage, snapshot.observed_at) for usage in pending]
         )
         return len(pending)
 
@@ -130,7 +132,7 @@ class InfluxDB3DailyWriter:
             self._client.query(
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema = 'iox' AND table_name = $table_name",
-                {"table_name": _TRAFFIC_TABLE},
+                {"table_name": _SUBSCRIPTION_TRAFFIC_TABLE},
             )
         )
 
@@ -141,7 +143,7 @@ class InfluxDB3DailyWriter:
         final_time = daily_final_time(expected.usage_date).astimezone(UTC)
         rows = self._client.query(
             "SELECT upload_bytes, download_bytes, deducted_bytes, server_rate, usage_date "
-            f'FROM "{_TRAFFIC_TABLE}" '
+            f'FROM "{_SUBSCRIPTION_TRAFFIC_TABLE}" '
             "WHERE provider = $provider AND user_id = $user_id "
             "AND usage_date = $usage_date AND time = CAST($final_time AS TIMESTAMP) LIMIT 2",
             {
@@ -155,4 +157,4 @@ class InfluxDB3DailyWriter:
             return None
         if len(rows) > 1:
             raise InfluxDB3Error("InfluxDB 3 contains multiple daily final points")
-        return decode_traffic_usage(rows[0], expected)
+        return decode_subscription_traffic_usage(rows[0], expected)

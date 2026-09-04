@@ -15,10 +15,10 @@ from kazu.clicmds.ssp_display import SSPConsole
 from kazu.config import AppConfig, SSPConfig, load_config
 from kazu.exitcodes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE
 from kazu.lib.influxdb3.reporter import InfluxDB3Reporter
-from kazu.lib.metrics.exporter import TrafficExporter
+from kazu.lib.metrics.exporter import SubscriptionTrafficExporter
 from kazu.lib.metrics.server import MetricsHTTPServer
 from kazu.lib.sspgateway import SSPGatewayError
-from kazu.lib.traffic import TrafficCollectionError, TrafficSnapshot
+from kazu.lib.traffic import SubscriptionTrafficCollectionError, SubscriptionTrafficSnapshot
 from kazu.sources.ssp import SSPSource
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ class SSPCommand(
         try:
             with source:
                 SSPConsole().report(source.collect(), gateway=config.gateway_base_url)
-        except TrafficCollectionError as exc:
+        except SubscriptionTrafficCollectionError as exc:
             errors.error(str(exc))
             return EXIT_FAILURE
         return EXIT_SUCCESS
@@ -123,16 +123,18 @@ def _serve_metrics(args: argparse.Namespace, config: AppConfig, source: SSPSourc
         resources.callback(reporter.close)
         registry = CollectorRegistry()
         scrape_duration = Gauge(
-            "kazu_proxy_scrape_duration_seconds",
+            "kazu_subscription_traffic_scrape_duration_seconds",
             "Time spent fetching and normalizing SSP traffic in seconds.",
             registry=registry,
         )
 
         @scrape_duration.time()
-        def collect() -> TrafficSnapshot:
+        def collect() -> SubscriptionTrafficSnapshot:
             return source.collect()
 
-        exporter = TrafficExporter(collect, registry=registry, on_collect=reporter.report)
+        exporter = SubscriptionTrafficExporter(
+            collect, registry=registry, on_collect=reporter.report
+        )
         server = resources.enter_context(MetricsHTTPServer(args.host, args.port, exporter.render))
         # Bind before probing InfluxDB; close the listener before closing clients.
         reporter.start()
