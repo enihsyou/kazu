@@ -24,7 +24,7 @@ uv run kazu ssp metrics --host 127.0.0.1 --port 9101
 旧版 stdout/`--output PATH`/`.prom` 文件方式已移除；原有定时命令和 textfile collector
 需要改为常驻进程加 HTTP scrape。启动前需配置有效的 SSP Authorization。
 
-只输出当前业务日截至本次查询时刻的累计值，三个指标均为 Gauge：
+只输出当前业务日截至本次查询时刻的累计总量（today total），三个指标均为 Gauge：
 
 ```text
 kazu_subscription_traffic_upload_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
@@ -32,10 +32,27 @@ kazu_subscription_traffic_download_bytes{provider="ssp",user_id="8780",server_ra
 kazu_subscription_traffic_deducted_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
 ```
 
-它们分别表示实际上行、实际下行和扣除流量，单位都是 bytes。label 只有固定的
+它们分别表示实际上行、实际下行和扣除流量，单位都是 bytes。数值在同一业务日内随
+使用量递增，并在进入下一业务日后重置为新一天的累计值；它们是上游提供的当日总量，
+不是把每次采集区间流量累加起来的 Counter。label 只有固定的
 `provider="ssp"`、上游 `user_id` 与 API 返回的 `server_rate`；不添加 `date`、
 `record_at` 或查询时间 label。Prometheus 的正常采集时间负责形成当天的时间序列；不
 进行历史日期回填，也不构造 Counter。
+
+查询当前累计量时，应取所需标签序列在查询窗口内的最后一个有效样本，不能对时间轴上
+的样本求和。查询每日累计量时，应取该业务日最后一个有效样本；查询小时消耗量时，应
+计算该小时末与小时初累计量之差，并处理跨日重置，避免把重置后的负差值当作流量。
+当看板需要忽略 `user_id` 与 `server_rate` 标签时，应先用 `sum` 合并标签，再用
+`last_over_time` 取得聚合后序列的最后一个有效样本。由于范围函数需要范围向量，
+PromQL 使用子查询语法，例如：
+
+```promql
+last_over_time((sum(kazu_subscription_traffic_deducted_bytes{provider=~"$provider"}))[2m:10s])
+```
+
+这里的 `sum` 只合并每个时刻的标签序列，不沿时间轴累加采集样本。看板中的“合计”、
+“总消耗”和“实际扣除流量”必须直接使用 `kazu_subscription_traffic_deducted_bytes`；
+不能用上传与下载相加代替，因为扣除流量已经应用了 `server_rate`。
 
 此外，`kazu_subscription_traffic_scrape_duration_seconds` 是无 label 的 Gauge，记录本次从 SSP
 抓取并规范化流量所用的秒数，不包含 InfluxDB 上报耗时。服务装配时直接使用该 Gauge
@@ -56,13 +73,13 @@ prometheus.scrape "kazu_ssp" {
     { "__address__" = "127.0.0.1:9101" },
   ]
   metrics_path    = "/metrics"
-  scrape_interval = "5m"
-  scrape_timeout  = "60s"
+  scrape_interval = "10s"
+  scrape_timeout  = "10s"
   forward_to     = [prometheus.remote_write.default.receiver]
 }
 ```
 
-示例以 5 分钟作为采集间隔，避免过于频繁请求 SSP；按业务需要调整。
+当前部署以 10 秒作为采集间隔；按业务需要调整时，应同时评估 SSP 请求频率与响应时间。
 `scrape_timeout` 要覆盖 SSP 请求以及启用时的 InfluxDB 查询/写入耗时，不得大于
 `scrape_interval`。SSP 的 `--timeout` 和 `[influxdb3].timeout` 是单次 HTTP 请求超时，
 不是整个 scrape 的总时限；历史日逐条查重会累加耗时。
