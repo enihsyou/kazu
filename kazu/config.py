@@ -36,12 +36,8 @@ class SSPConfig:
     """Complete SSP authorization header value."""
     api_base_url: str
     """SSP API base URL."""
-    traffic_endpoint: str
-    """SSP traffic endpoint path."""
-    gateway_endpoints: tuple[str, ...]
-    """Encrypted gateway endpoint URLs."""
-    domain: str
-    """Display domain associated with the source."""
+    gateway_base_url: str
+    """Encrypted gateway base URL."""
     timeout: float
     """SSP request timeout in seconds."""
 
@@ -80,12 +76,6 @@ def _as_str(value: Any) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _as_str_tuple(value: Any) -> tuple[str, ...]:
-    if not isinstance(value, list):
-        return ()
-    return tuple(item for item in value if isinstance(item, str) and item.strip())
-
-
 def _as_positive_float(value: Any, default: float) -> float:
     if isinstance(value, int | float) and not isinstance(value, bool) and value > 0:
         return float(value)
@@ -120,9 +110,7 @@ def load_config() -> AppConfig:
         ssp=SSPConfig(
             authorization=_as_str(ssp.get("authorization")),
             api_base_url=_as_str(ssp.get("api_base_url")),
-            traffic_endpoint=_as_str(ssp.get("traffic_endpoint")),
-            gateway_endpoints=_as_str_tuple(ssp.get("gateway_endpoints")),
-            domain=_as_str(ssp.get("domain")),
+            gateway_base_url=_as_str(ssp.get("gateway_base_url")),
             timeout=_as_positive_float(ssp.get("timeout"), 15.0),
         ),
     )

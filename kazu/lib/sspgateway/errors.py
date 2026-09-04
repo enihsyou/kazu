@@ -11,7 +11,7 @@ class SSPGatewayError(RuntimeError):
 
 
 class GatewayNetworkError(SSPGatewayError):
-    """All configured gateways failed at the transport layer."""
+    """The configured gateway request failed at the transport layer."""
 
 
 class GatewayProtocolError(SSPGatewayError):

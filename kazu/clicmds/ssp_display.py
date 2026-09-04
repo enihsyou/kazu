@@ -11,7 +11,7 @@ from rich.table import Table
 
 from kazu.config import get_config_path
 from kazu.lib.sspgateway import GatewayTrace
-from kazu.sources.ssp import SSPTrafficReport
+from kazu.lib.traffic import TrafficSnapshot
 
 
 class SSPConsole:
@@ -55,14 +55,15 @@ class SSPConsole:
         self.console.print(Syntax(trace.request_http, "http", theme="ansi_dark", word_wrap=True))
         self.console.print(Syntax(trace.response_http, "http", theme="ansi_dark", word_wrap=True))
 
-    def report(self, report: SSPTrafficReport) -> None:
-        """Display an SSP traffic report as a summary and table."""
+    def report(self, snapshot: TrafficSnapshot, *, gateway: str) -> None:
+        """Display the collected traffic snapshot as a summary and table."""
+        accounts = ", ".join(sorted({usage.user_id for usage in snapshot.usages})) or "unknown"
         summary = (
             "source: ssp-traffic\n"
-            f"domain: {report.domain}\n"
-            f"account: {report.account}\n"
-            f"rows: {len(report.records)}\n"
-            f"extracted_at: {report.extracted_at.astimezone().isoformat()}"
+            f"gateway: {gateway}\n"
+            f"account: user:{accounts}\n"
+            f"rows: {len(snapshot.usages)}\n"
+            f"extracted_at: {snapshot.observed_at.astimezone().strftime('%Y-%m-%d %H:%M:%S')}"
         )
         self.console.print(Panel.fit(summary, title="SSP Traffic Summary", border_style="cyan"))
 
@@ -72,13 +73,13 @@ class SSPConsole:
         table.add_column("Download", style="blue", no_wrap=True)
         table.add_column("Multiplier", style="yellow", no_wrap=True)
         table.add_column("Total", style="bold", no_wrap=True)
-        for record in report.records:
+        for usage in snapshot.usages:
             table.add_row(
-                record.recorded_at.astimezone().strftime("%Y-%m-%d"),
-                _format_bytes(record.upload_bytes),
-                _format_bytes(record.download_bytes),
-                f"{record.multiplier:f}x",
-                _format_bytes(record.billed_bytes),
+                usage.usage_date.isoformat(),
+                _format_bytes(usage.upload_bytes),
+                _format_bytes(usage.download_bytes),
+                f"{usage.server_rate}x",
+                _format_bytes(usage.deducted_bytes),
             )
         self.console.print(table)
 

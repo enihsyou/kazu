@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any, Self
 from urllib.parse import urlencode, urljoin, urlsplit
 
@@ -23,12 +23,11 @@ from kazu.lib.sspgateway.traffic import parse_traffic_log
 DEFAULT_API_BASE_URL = "https://s1.thefew01.top/api/v1"
 """Provide the default SSP API base URL."""
 
-DEFAULT_GATEWAY_ENDPOINTS = ("https://x1.thecores.top/",)
-"""Provide the default encrypted gateway endpoints."""
+DEFAULT_GATEWAY_BASE_URL = "https://x1.thecores.top"
+"""Provide the default encrypted gateway base URL."""
 
 DEFAULT_TRAFFIC_ENDPOINT = "user/stat/getTrafficLog"
 """Provide the default read-only traffic endpoint."""
-_TRAFFIC_PATH_SUFFIX = "/user/stat/getTrafficLog"
 _BEARER_AUTH_RE = re.compile(r"^Bearer ([^\s]+)$", re.IGNORECASE)
 
 
@@ -40,8 +39,7 @@ class SSPGateway:
         authorization: str,
         *,
         api_base_url: str = DEFAULT_API_BASE_URL,
-        traffic_endpoint: str = DEFAULT_TRAFFIC_ENDPOINT,
-        gateway_endpoints: Sequence[str] = DEFAULT_GATEWAY_ENDPOINTS,
+        gateway_base_url: str = DEFAULT_GATEWAY_BASE_URL,
         timeout: float = 15.0,
         trace: TraceCallback | None = None,
     ) -> None:
@@ -50,11 +48,8 @@ class SSPGateway:
         self.api_base_url = _validate_api_base_url(api_base_url)
         """Store the validated SSP API base URL."""
 
-        self.traffic_endpoint = _validate_traffic_endpoint(traffic_endpoint)
-        """Store the validated read-only traffic endpoint."""
-
-        self.gateway_endpoints = _validate_gateway_endpoints(gateway_endpoints)
-        """Store the validated encrypted gateway endpoints."""
+        self.gateway_base_url = _validate_gateway_base_url(gateway_base_url)
+        """Store the validated encrypted gateway base URL."""
 
         self.timeout = float(timeout)
         """Store the HTTP request timeout in seconds."""
@@ -100,7 +95,7 @@ class SSPGateway:
 
     def get_traffic_log(self) -> TrafficLogResult:
         """Fetch and parse the authenticated user's traffic log."""
-        return parse_traffic_log(self._get_json(self.traffic_endpoint))
+        return parse_traffic_log(self._get_json(DEFAULT_TRAFFIC_ENDPOINT))
 
     def _get_json(self, endpoint: str) -> APIResult:
         api_url = urljoin(f"{self.api_base_url}/", endpoint.lstrip("/"))
@@ -124,23 +119,19 @@ class SSPGateway:
         headers: Mapping[str, str],
         body: Mapping[str, str],
     ) -> GatewayResponse:
-        last_error: httpx.TransportError | None = None
-        for endpoint in self.gateway_endpoints:
-            try:
-                response = self._client.post(endpoint, headers=headers, json=body)
-            except httpx.TransportError as exc:
-                last_error = exc
-                continue
-            result = self._codec.decode_response(response)
-            if self.trace is not None:
-                self.trace(
-                    GatewayTrace(
-                        format_request_trace(endpoint, headers, body),
-                        format_response_trace(response, result),
-                    )
+        try:
+            response = self._client.post(self.gateway_base_url, headers=headers, json=body)
+        except httpx.TransportError as exc:
+            raise GatewayNetworkError("Gateway request failed") from exc
+        result = self._codec.decode_response(response)
+        if self.trace is not None:
+            self.trace(
+                GatewayTrace(
+                    format_request_trace(self.gateway_base_url, headers, body),
+                    format_response_trace(response, result),
                 )
-            return result
-        raise GatewayNetworkError("All configured gateway endpoints failed") from last_error
+            )
+        return result
 
 
 def _validate_api_base_url(value: str) -> str:
@@ -165,26 +156,14 @@ def _normalize_authorization(value: str) -> str:
     return f"Bearer {match.group(1)}"
 
 
-def _validate_traffic_endpoint(value: str) -> str:
-    endpoint = value.strip()
-    parsed = urlsplit(endpoint)
-    if parsed.scheme or parsed.netloc or parsed.fragment or parsed.query:
-        raise ValueError("traffic_endpoint must be a relative path without query parameters")
-    normalized = "/" + endpoint.lstrip("/")
-    if not normalized.endswith(_TRAFFIC_PATH_SUFFIX):
-        raise ValueError("traffic_endpoint must end with user/stat/getTrafficLog")
-    return endpoint.lstrip("/")
-
-
-def _validate_gateway_endpoints(values: Sequence[str]) -> tuple[str, ...]:
-    endpoints = tuple(value.strip() for value in values if value.strip())
-    if not endpoints:
-        raise ValueError("At least one gateway endpoint is required")
-    for endpoint in endpoints:
-        parsed = urlsplit(endpoint)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("gateway endpoints must be absolute HTTP(S) URLs")
-    return endpoints
+def _validate_gateway_base_url(value: str) -> str:
+    base_url = value.strip()
+    parsed = urlsplit(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("gateway_base_url must be an absolute HTTP(S) URL")
+    if parsed.query or parsed.fragment:
+        raise ValueError("gateway_base_url must not contain a query or fragment")
+    return base_url.rstrip("/")
 
 
 def _unwrap_api_payload(raw: Any) -> tuple[Any, str | None]:

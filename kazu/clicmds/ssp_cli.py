@@ -101,12 +101,13 @@ class SSPCommand(
 
     def _run_get(self, args: argparse.Namespace) -> int:
         errors = SSPConsole(stderr=True)
-        source = _create_source(args, load_config().ssp, errors)
+        config = load_config().ssp
+        source = _create_source(args, config, errors)
         if source is None:
             return EXIT_USAGE
         try:
             with source:
-                SSPConsole().report(source.fetch_report())
+                SSPConsole().report(source.collect(), gateway=config.gateway_base_url)
         except TrafficCollectionError as exc:
             errors.error(str(exc))
             return EXIT_FAILURE

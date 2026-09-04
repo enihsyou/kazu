@@ -1,8 +1,7 @@
-"""SSP collection and normalization, independent of CLI and export transports."""
+"""Unified SSP collection and normalization for CLI and export consumers."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Self
@@ -10,20 +9,6 @@ from typing import Self
 from kazu.config import SSPConfig
 from kazu.lib.sspgateway import SSPGateway, SSPGatewayError, TraceCallback, TrafficRecord
 from kazu.lib.traffic import SubscriptionTrafficUsage, TrafficCollectionError, TrafficSnapshot
-
-
-@dataclass(frozen=True)
-class SSPTrafficReport:
-    """Traffic records collected from SSP with source metadata."""
-
-    domain: str
-    """Configured source domain."""
-    account: str
-    """Account label associated with the records."""
-    extracted_at: datetime
-    """Timestamp when the report was extracted."""
-    records: tuple[TrafficRecord, ...]
-    """Traffic records returned by SSP."""
 
 
 def normalize_traffic(
@@ -77,7 +62,7 @@ def _server_rate_text(record: TrafficRecord) -> str:
 
 
 class SSPSource:
-    """Collect traffic reports and normalized usage snapshots from SSP."""
+    """Collect normalized traffic snapshots from SSP."""
 
     def __init__(
         self,
@@ -87,12 +72,10 @@ class SSPSource:
         timeout: float | None = None,
         trace: TraceCallback | None = None,
     ) -> None:
-        self._domain = config.domain or "ssp"
         self._gateway = SSPGateway(
             config.authorization if authorization is None else authorization,
             api_base_url=config.api_base_url,
-            traffic_endpoint=config.traffic_endpoint,
-            gateway_endpoints=config.gateway_endpoints,
+            gateway_base_url=config.gateway_base_url,
             timeout=config.timeout if timeout is None else timeout,
             trace=trace,
         )
@@ -109,24 +92,15 @@ class SSPSource:
         """Release the underlying SSP gateway resources."""
         self._gateway.close()
 
-    def fetch_report(self) -> SSPTrafficReport:
-        """Fetch the latest traffic report from SSP."""
+    def collect(self) -> TrafficSnapshot:
+        """Collect and normalize the latest SSP traffic snapshot."""
         try:
             traffic = self._gateway.get_traffic_log()
         except (SSPGatewayError, ValueError) as exc:
             raise TrafficCollectionError(f"Unable to fetch SSP traffic: {exc}") from exc
-        return SSPTrafficReport(
-            domain=self._domain,
-            account=f"{traffic.records[0].user_id}" if traffic.records else "unknown",
-            extracted_at=datetime.now().astimezone(),
-            records=traffic.records,
-        )
-
-    def collect(self) -> TrafficSnapshot:
-        """Collect and normalize the latest SSP traffic snapshot."""
-        report = self.fetch_report()
+        observed_at = datetime.now().astimezone()
         try:
-            usages = normalize_traffic(report.records, report.extracted_at.date())
+            usages = normalize_traffic(traffic.records, observed_at.date())
         except ValueError as exc:
             raise TrafficCollectionError(f"Unable to normalize SSP traffic: {exc}") from exc
-        return TrafficSnapshot(observed_at=report.extracted_at, usages=usages)
+        return TrafficSnapshot(observed_at=observed_at, usages=usages)

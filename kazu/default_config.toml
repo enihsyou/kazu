@@ -11,13 +11,9 @@ timeout = 15.0
 [sources.ssp]
 # Complete HTTP Authorization value; use the Bearer scheme and a non-empty credential.
 authorization = ""
-# Base URL of the read-only SSP API.
+# Gateway base URL where encrypted messages are sent.
+gateway_base_url = "https://x1.thecores.top"
+# Base URL of the SSP API, used for API requests wrapped in gateway message.
 api_base_url = "https://s1.thefew01.top/api/v1"
-# Read-only traffic-log route. It must end with user/stat/getTrafficLog.
-traffic_endpoint = "user/stat/getTrafficLog"
-# Encrypted gateway endpoints, tried in order only after transport failures.
-gateway_endpoints = ["https://x1.thecores.top/"]
-# Logical domain label for exported records.
-domain = "ssp"
 # Request timeout in seconds.
 timeout = 15.0
