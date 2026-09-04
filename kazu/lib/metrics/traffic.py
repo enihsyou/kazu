@@ -6,17 +6,17 @@ from kazu.lib.traffic import SubscriptionTrafficUsage
 
 _TRAFFIC_METRICS = (
     (
-        "proxy_traffic_upload_bytes",
+        "kazu_proxy_upload_bytes",
         "upload_bytes",
         "Current business-day cumulative subscription upload traffic in bytes.",
     ),
     (
-        "proxy_traffic_download_bytes",
+        "kazu_proxy_download_bytes",
         "download_bytes",
         "Current business-day cumulative subscription download traffic in bytes.",
     ),
     (
-        "proxy_traffic_deducted_bytes",
+        "kazu_proxy_deducted_bytes",
         "deducted_bytes",
         "Current business-day cumulative subscription deducted traffic in bytes.",
     ),

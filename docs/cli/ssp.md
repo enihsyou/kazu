@@ -61,15 +61,15 @@ collector、Pushgateway 或定时重复启动命令。详见[采集配置示例]
 当前三个流量 Gauge 名称为：
 
 ```text
-proxy_traffic_upload_bytes
-proxy_traffic_download_bytes
-proxy_traffic_deducted_bytes
+kazu_proxy_upload_bytes
+kazu_proxy_download_bytes
+kazu_proxy_deducted_bytes
 ```
 
 另外输出无 label 的抓取耗时 Gauge：
 
 ```text
-proxy_traffic_scrape_duration_seconds
+kazu_proxy_scrape_duration_seconds
 ```
 
 其值为本次从 SSP 抓取并规范化流量所用的秒数，不包含 InfluxDB 上报耗时，

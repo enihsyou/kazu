@@ -123,7 +123,7 @@ def _serve_metrics(args: argparse.Namespace, config: AppConfig, source: SSPSourc
         resources.callback(reporter.close)
         registry = CollectorRegistry()
         scrape_duration = Gauge(
-            "proxy_traffic_scrape_duration_seconds",
+            "kazu_proxy_scrape_duration_seconds",
             "Time spent fetching and normalizing SSP traffic in seconds.",
             registry=registry,
         )
