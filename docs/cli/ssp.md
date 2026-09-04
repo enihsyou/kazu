@@ -27,7 +27,8 @@ docker run --rm -p 127.0.0.1:9101:9101 \
 
 ## `get` 子命令
 
-`kazu ssp get` 获取流量数据并以终端表格展示。
+`kazu ssp get` 与 `metrics` 共用 `SSPSource.collect()` 获取并规范化流量数据，
+终端表格展示同一份快照中的业务日期、流量和倍率。
 
 请求选项：
 
@@ -57,7 +58,7 @@ collector、Pushgateway 或定时重复启动命令。详见[采集配置示例]
 - `--timeout`：请求超时秒数。
 - `--verbose`：显示已脱敏的 HTTP 请求与响应。
 
-当前三个 Gauge 名称为：
+当前三个流量 Gauge 名称为：
 
 ```text
 proxy_traffic_upload_bytes
@@ -65,7 +66,16 @@ proxy_traffic_download_bytes
 proxy_traffic_deducted_bytes
 ```
 
-每个指标都有 `provider="ssp"`、`user_id` 和 `server_rate` 三个 label。`date`、
+另外输出无 label 的抓取耗时 Gauge：
+
+```text
+proxy_traffic_scrape_duration_seconds
+```
+
+其值为本次从 SSP 抓取并规范化流量所用的秒数，不包含 InfluxDB 上报耗时，
+与流量指标在同一次 Prometheus 响应中输出，不写入 InfluxDB。
+
+三个流量指标都有 `provider="ssp"`、`user_id` 和 `server_rate` 三个 label；抓取耗时指标不带 label。`date`、
 `record_at` 和查询时间都不是 label。上游请求失败、当前日数据缺失或采集请求重叠时，
 `/metrics` 返回 HTTP 503，不返回旧数据或人为补零；下一次 scrape 会重新尝试。
 其他路径返回 HTTP 404。启动和上报状态通过 stderr 中的 INFO/WARNING/ERROR 日志显示。

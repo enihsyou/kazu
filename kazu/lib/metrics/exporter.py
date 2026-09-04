@@ -4,8 +4,10 @@ import logging
 from collections.abc import Callable
 from threading import Lock
 
-from kazu.lib.metrics.traffic import render_traffic_metrics
-from kazu.lib.traffic import TrafficCollectionError, TrafficSnapshot, TrafficSource
+from prometheus_client import CollectorRegistry, generate_latest
+
+from kazu.lib.metrics.traffic import TrafficMetrics
+from kazu.lib.traffic import TrafficCollectionError, TrafficSnapshot
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,11 +21,14 @@ class TrafficExporter:
 
     def __init__(
         self,
-        source: TrafficSource,
+        collect: Callable[[], TrafficSnapshot],
         *,
+        registry: CollectorRegistry,
         on_collect: Callable[[TrafficSnapshot], None] | None = None,
     ) -> None:
-        self._source = source
+        self._collect = collect
+        self._registry = registry
+        self._traffic_metrics = TrafficMetrics(registry)
         self._on_collect = on_collect
         self._lock = Lock()
 
@@ -33,13 +38,14 @@ class TrafficExporter:
         if not self._lock.acquire(blocking=False):
             raise MetricsUnavailable("A traffic collection is already in progress.")
         try:
-            return self._collect_metrics()
+            self._collect_metrics()
+            return generate_latest(self._registry)
         finally:
             self._lock.release()
 
-    def _collect_metrics(self) -> bytes:
+    def _collect_metrics(self) -> None:
         try:
-            snapshot = self._source.collect()
+            snapshot = self._collect()
         except TrafficCollectionError as exc:
             _LOGGER.error("Metrics collection failed: %s", exc)
             raise MetricsUnavailable("Unable to collect fresh traffic metrics.") from exc
@@ -50,4 +56,4 @@ class TrafficExporter:
         if not current:
             _LOGGER.warning("The source returned no traffic for today's local business date.")
             raise MetricsUnavailable("No traffic record for today's local business date.")
-        return render_traffic_metrics(current)
+        self._traffic_metrics.update(current)

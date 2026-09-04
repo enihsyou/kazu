@@ -7,8 +7,10 @@ import logging
 import math
 from contextlib import ExitStack
 
+from prometheus_client import CollectorRegistry, Gauge
+
 from kazu.clicmds.base import CLICommand
-from kazu.clicmds.documentation import CLIDocumentation
+from kazu.clicmds.documentation import DocumentationAction
 from kazu.clicmds.ssp_display import SSPConsole
 from kazu.config import AppConfig, SSPConfig, load_config
 from kazu.exitcodes import EXIT_FAILURE, EXIT_SUCCESS, EXIT_USAGE
@@ -16,25 +18,10 @@ from kazu.lib.influxdb3.reporter import InfluxDB3Reporter
 from kazu.lib.metrics.exporter import TrafficExporter
 from kazu.lib.metrics.server import MetricsHTTPServer
 from kazu.lib.sspgateway import SSPGatewayError
-from kazu.lib.traffic import TrafficCollectionError
+from kazu.lib.traffic import TrafficCollectionError, TrafficSnapshot
 from kazu.sources.ssp import SSPSource
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class _SSPHelpAction(argparse.Action):
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: object,
-        option_string: str | None = None,
-    ) -> None:
-        try:
-            CLIDocumentation("ssp").render()
-        except RuntimeError as exc:
-            parser.exit(EXIT_FAILURE, f"{exc}\n")
-        parser.exit(EXIT_SUCCESS)
 
 
 class SSPCommand(
@@ -55,8 +42,7 @@ class SSPCommand(
         subparser.set_defaults(func=self._show_help)
         subparser.add_argument(
             "--docs",
-            action=_SSPHelpAction,
-            nargs=0,
+            action=DocumentationAction,
             help="Show the full SSP usage documentation",
         )
 
@@ -135,7 +121,18 @@ def _serve_metrics(args: argparse.Namespace, config: AppConfig, source: SSPSourc
     with ExitStack() as resources:
         reporter = InfluxDB3Reporter(config.influxdb3, enabled=args.push_influxdb)
         resources.callback(reporter.close)
-        exporter = TrafficExporter(source, on_collect=reporter.report)
+        registry = CollectorRegistry()
+        scrape_duration = Gauge(
+            "proxy_traffic_scrape_duration_seconds",
+            "Time spent fetching and normalizing SSP traffic in seconds.",
+            registry=registry,
+        )
+
+        @scrape_duration.time()
+        def collect() -> TrafficSnapshot:
+            return source.collect()
+
+        exporter = TrafficExporter(collect, registry=registry, on_collect=reporter.report)
         server = resources.enter_context(MetricsHTTPServer(args.host, args.port, exporter.render))
         # Bind before probing InfluxDB. On exit, drain HTTP handlers before closing clients.
         reporter.start()

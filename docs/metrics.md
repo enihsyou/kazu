@@ -14,8 +14,12 @@ uv run kazu ssp metrics --host 127.0.0.1 --port 9101
 
 命令常驻运行，通过 `GET http://127.0.0.1:9101/metrics` 提供指标。`--host` 默认
 `127.0.0.1`，`--port` 默认 `9101`；Ctrl+C 停止服务。每次请求实时读取 SSP，不在后台
-定时轮询。指标使用 `prometheus-client` 构造，每次采集生成独立的 registry，避免
-上一次响应的 label 或数据残留。项目没有 Prometheus 连接配置或远程推送逻辑。
+定时轮询。指标使用 `prometheus-client` 构造，独立 registry 和 Gauge 在服务实例启动时
+创建一次并持续复用。每次更新时清理流量 Gauge 的旧标签，采集、更新和响应生成均在
+同一把锁内完成，避免上一次响应的 label 或数据残留。项目没有 Prometheus 连接配置或远程推送逻辑。
+
+响应使用显式创建的 `CollectorRegistry`，不使用默认全局 `REGISTRY`，因此不输出
+默认 Process、GC、Platform collectors 的 `process_*`、`python_gc_*` 或 `python_info` 指标。
 
 旧版 stdout/`--output PATH`/`.prom` 文件方式已移除；原有定时命令和 textfile collector
 需要改为常驻进程加 HTTP scrape。启动前需配置有效的 SSP Authorization。
@@ -32,6 +36,10 @@ proxy_traffic_deducted_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
 `provider="ssp"`、上游 `user_id` 与 API 返回的 `server_rate`；不添加 `date`、
 `record_at` 或查询时间 label。Prometheus 的正常采集时间负责形成当天的时间序列；不
 进行历史日期回填，也不构造 Counter。
+
+此外，`proxy_traffic_scrape_duration_seconds` 是无 label 的 Gauge，记录本次从 SSP
+抓取并规范化流量所用的秒数，不包含 InfluxDB 上报耗时。服务装配时直接使用该 Gauge
+的 `.time()` 装饰采集函数，与流量指标通过同一 registry 输出到 Prometheus，不写入 InfluxDB。
 
 请求失败或响应中没有当前业务日时，`/metrics` 返回 HTTP 503，Alloy 将这次 scrape
 视为失败；不会返回旧值或人为补零。并发采集重叠时额外请求也返回 503，以避免重复请求
@@ -57,7 +65,7 @@ prometheus.scrape "kazu_ssp" {
 示例以 5 分钟作为采集间隔，避免过于频繁请求 SSP；按业务需要调整。
 `scrape_timeout` 要覆盖 SSP 请求以及启用时的 InfluxDB 查询/写入耗时，不得大于
 `scrape_interval`。SSP 的 `--timeout` 和 `[influxdb3].timeout` 是单次 HTTP 请求超时，
-不是整个 scrape 的总时限；多网关重试、历史日逐条查重会累加耗时。
+不是整个 scrape 的总时限；历史日逐条查重会累加耗时。
 配置项参见 [Alloy prometheus.scrape 文档](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.scrape/)。
 
 同机采集可使用默认监听地址。跨主机或跨容器采集时，Kazu 使用 `--host 0.0.0.0`，

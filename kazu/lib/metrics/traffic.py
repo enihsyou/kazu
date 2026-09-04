@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from prometheus_client import CollectorRegistry, Gauge, generate_latest
+from prometheus_client import CollectorRegistry, Gauge
 
 from kazu.lib.traffic import SubscriptionTrafficUsage
 
-_METRICS = (
+_TRAFFIC_METRICS = (
     (
         "proxy_traffic_upload_bytes",
         "upload_bytes",
@@ -21,18 +21,25 @@ _METRICS = (
         "Current business-day cumulative subscription deducted traffic in bytes.",
     ),
 )
-_LABELS = ("provider", "user_id", "server_rate")
+_TRAFFIC_LABELS = ("provider", "user_id", "server_rate")
 
 
-def render_traffic_metrics(usages: tuple[SubscriptionTrafficUsage, ...]) -> bytes:
-    """Render the supplied usages as Prometheus exposition bytes."""
-    registry = CollectorRegistry()
-    for name, attribute, description in _METRICS:
-        gauge = Gauge(name, description, labelnames=_LABELS, registry=registry)
-        for usage in usages:
-            gauge.labels(
-                provider=usage.provider,
-                user_id=usage.user_id,
-                server_rate=usage.server_rate,
-            ).set(getattr(usage, attribute))
-    return generate_latest(registry)
+class TrafficMetrics:
+    """Own reusable traffic gauges for one exporter instance."""
+
+    def __init__(self, registry: CollectorRegistry) -> None:
+        self._gauges = {
+            attribute: Gauge(name, description, labelnames=_TRAFFIC_LABELS, registry=registry)
+            for name, attribute, description in _TRAFFIC_METRICS
+        }
+
+    def update(self, usages: tuple[SubscriptionTrafficUsage, ...]) -> None:
+        """Replace all previous label sets and values with the current snapshot."""
+        for attribute, gauge in self._gauges.items():
+            gauge.clear()
+            for usage in usages:
+                gauge.labels(
+                    provider=usage.provider,
+                    user_id=usage.user_id,
+                    server_rate=usage.server_rate,
+                ).set(getattr(usage, attribute))

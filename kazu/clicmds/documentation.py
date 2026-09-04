@@ -2,11 +2,36 @@
 
 from __future__ import annotations
 
+import argparse
 from importlib import resources
 from pathlib import Path
 
 from rich.console import Console
 from rich.markdown import Markdown
+
+from kazu.exitcodes import EXIT_FAILURE, EXIT_SUCCESS
+
+
+class DocumentationAction(argparse.Action):
+    """Render a command's packaged documentation and exit without running it."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(nargs=0, default=argparse.SUPPRESS, **kwargs)
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        del namespace, values, option_string
+        command = parser.prog.split()[-1]
+        try:
+            CLIDocumentation(command).render()
+        except RuntimeError as exc:
+            parser.exit(EXIT_FAILURE, f"{exc}\n")
+        parser.exit(EXIT_SUCCESS)
 
 
 class CLIDocumentation:
