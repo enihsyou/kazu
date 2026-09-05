@@ -21,15 +21,14 @@ uv run kazu ssp metrics --host 127.0.0.1 --port 9101
 响应使用显式创建的 `CollectorRegistry`，不使用默认全局 `REGISTRY`，因此不输出
 默认 Process、GC、Platform collectors 的 `process_*`、`python_gc_*` 或 `python_info` 指标。
 
-旧版 stdout/`--output PATH`/`.prom` 文件方式已移除；原有定时命令和 textfile collector
-需要改为常驻进程加 HTTP scrape。启动前需配置有效的 SSP Authorization。
+启动前需配置有效的 SSP Authorization，并由常驻进程通过 HTTP 提供 scrape。
 
-只输出当前业务日截至本次查询时刻的累计总量（today total），保留三个 Gauge：
+流量指标使用三个 Counter，表示当前业务日截至本次查询时刻的累计总量（today total）：
 
 ```text
-kazu_subscription_traffic_upload_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
-kazu_subscription_traffic_download_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
-kazu_subscription_traffic_deducted_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
+kazu_subscription_traffic_upload_bytes_total{provider="ssp",user_id="8780",server_rate="1.00"}
+kazu_subscription_traffic_download_bytes_total{provider="ssp",user_id="8780",server_rate="1.00"}
+kazu_subscription_traffic_deducted_bytes_total{provider="ssp",user_id="8780",server_rate="1.00"}
 ```
 
 它们分别表示实际上行、实际下行和扣除流量，单位都是 bytes。数值在同一业务日内随
@@ -38,14 +37,6 @@ kazu_subscription_traffic_deducted_bytes{provider="ssp",user_id="8780",server_ra
 `provider="ssp"`、上游 `user_id` 与 API 返回的 `server_rate`；不添加 `date`、
 `record_at` 或查询时间 label。Prometheus 的正常采集时间负责形成当天的时间序列；不
 进行历史日期回填。
-
-同时并列输出相同快照、相同标签的三个 Counter，供观察比较：
-
-```text
-kazu_subscription_traffic_upload_bytes_total
-kazu_subscription_traffic_download_bytes_total
-kazu_subscription_traffic_deducted_bytes_total
-```
 
 Counter 直接暴露上游当日累计值，不在进程内累加，跨日随上游重置。其语义假设是
 同一标签序列在业务日内只增不减；如果上游向下修正，Prometheus 会把下降视为重置，
@@ -69,11 +60,11 @@ sum(resets(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}
 PromQL 使用子查询语法，例如：
 
 ```promql
-last_over_time((sum(kazu_subscription_traffic_deducted_bytes{provider=~"$provider"}))[2m:10s])
+last_over_time((sum(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}))[2m:10s])
 ```
 
 这里的 `sum` 只合并每个时刻的标签序列，不沿时间轴累加采集样本。看板中的“合计”、
-“总消耗”和“实际扣除流量”必须直接使用 `kazu_subscription_traffic_deducted_bytes`；
+“总消耗”和“实际扣除流量”必须直接使用 `kazu_subscription_traffic_deducted_bytes_total`；
 不能用上传与下载相加代替，因为扣除流量已经应用了 `server_rate`。
 
 此外，`kazu_subscription_traffic_scrape_duration_seconds` 是无 label 的 Gauge，记录本次从 SSP

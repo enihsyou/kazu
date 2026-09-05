@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from prometheus_client import CollectorRegistry
-from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
+from prometheus_client.core import CounterMetricFamily
 
 from kazu.lib.traffic import SubscriptionTrafficUsage
 
@@ -28,7 +28,7 @@ _SUBSCRIPTION_TRAFFIC_LABELS = ("provider", "user_id", "server_rate")
 
 
 class SubscriptionTrafficMetrics:
-    """Expose each upstream snapshot as parallel gauges and daily counters."""
+    """Expose each upstream snapshot as daily counters."""
 
     def __init__(self, registry: CollectorRegistry) -> None:
         self._usages: tuple[SubscriptionTrafficUsage, ...] = ()
@@ -38,14 +38,11 @@ class SubscriptionTrafficMetrics:
         """Replace all previous label sets and values with the current snapshot."""
         self._usages = usages
 
-    def collect(self) -> Iterator[GaugeMetricFamily | CounterMetricFamily]:
+    def collect(self) -> Iterator[CounterMetricFamily]:
         for name, attribute, description in _SUBSCRIPTION_TRAFFIC_METRICS:
-            gauge = GaugeMetricFamily(name, description, labels=_SUBSCRIPTION_TRAFFIC_LABELS)
             counter = CounterMetricFamily(name, description, labels=_SUBSCRIPTION_TRAFFIC_LABELS)
             for usage in self._usages:
                 labels = [usage.provider, usage.user_id, usage.server_rate]
                 value = getattr(usage, attribute)
-                gauge.add_metric(labels, value)
                 counter.add_metric(labels, value)
-            yield gauge
             yield counter

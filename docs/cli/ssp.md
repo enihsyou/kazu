@@ -48,7 +48,7 @@ docker run --rm -p 127.0.0.1:9101:9101 \
 
 `kazu ssp metrics` 启动常驻 HTTP 服务，默认地址为
 `http://127.0.0.1:9101/metrics`，按 Ctrl+C 停止。每次 `GET /metrics` 才请求 SSP，
-由 `prometheus-client` 的 `Gauge` 构造指标并生成 Prometheus exposition 响应。
+由 `prometheus-client` 构造指标并生成 Prometheus exposition 响应。
 
 推荐让 Grafana Alloy 的 `prometheus.scrape` 直接拉取 `/metrics`，不使用 textfile
 collector、Pushgateway 或定时重复启动命令。详见[采集配置示例](../metrics.md#推荐使用-grafana-alloy-采集)。
@@ -67,22 +67,22 @@ scrape 就不会产生采集或上报。
 - `--timeout`：请求超时秒数。
 - `--verbose`：显示已脱敏的 HTTP 请求与响应。
 
-当前三个流量 Gauge 名称为：
+三个流量 Counter 名称为：
 
 ```text
-kazu_subscription_traffic_upload_bytes
-kazu_subscription_traffic_download_bytes
-kazu_subscription_traffic_deducted_bytes
+kazu_subscription_traffic_upload_bytes_total
+kazu_subscription_traffic_download_bytes_total
+kazu_subscription_traffic_deducted_bytes_total
 ```
 
 三个值都是当前业务日截至本次查询时刻的累计总量（today total），在日内随使用量递增，
-进入下一业务日后重置。它们不是每个采集间隔内的增量，也不是 Counter。查询当前累计量
+进入下一业务日后随上游重置。它们不是每个采集间隔内的增量。查询当前累计量
 应取窗口内最后一个有效样本，不能把时间轴上的样本相加；每日累计量取该业务日最后一个
 有效样本，每小时消耗量则由该小时首尾累计值之差计算，并处理跨日重置。忽略
 `user_id` 与 `server_rate` 时，先用 `sum` 合并每个时刻的标签序列，再对聚合后的序列
 使用 `last_over_time` 取最后一个有效样本；`sum` 不用于累加时间轴上的采集样本。
 PromQL 应使用 `last_over_time((sum(metric{...}))[窗口:10s])` 形式的子查询。展示合计、
-总消耗或实际扣除流量时直接查询 `kazu_subscription_traffic_deducted_bytes`，不要用上传与
+总消耗或实际扣除流量时直接查询 `kazu_subscription_traffic_deducted_bytes_total`，不要用上传与
 下载相加代替，因为扣除流量已经应用了 `server_rate`。
 
 另外输出无 label 的抓取耗时 Gauge：

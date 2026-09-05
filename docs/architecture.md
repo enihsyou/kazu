@@ -15,7 +15,7 @@ kazu/
 ├── lib/
 │   ├── traffic.py               # 通用订阅流量模型、快照和 SubscriptionTrafficSource 协议
 │   ├── metrics/
-│   │   ├── traffic.py           # SubscriptionTrafficMetrics：持久 Gauge 的注册、清理和更新
+│   │   ├── traffic.py           # SubscriptionTrafficMetrics：流量 Counter collector
 │   │   ├── exporter.py        # SubscriptionTrafficExporter：每次 scrape 的采集协调
 │   │   └── server.py          # MetricsHTTPServer：HTTP 路由与响应
 │   ├── influxdb3/
@@ -39,7 +39,7 @@ kazu/
   `_cli.py` 结尾并由包发现逻辑加载。
 - 指标实现统一位于 `lib/metrics/` 包，不再保留同名的 `lib/metrics.py` 模块。
 - `sources` 通过 `collect()` 产出 `SubscriptionTrafficSnapshot`；不依赖 CLI、Prometheus 或 InfluxDB。
-- `SubscriptionTrafficMetrics` 持有订阅流量 Gauge，负责注册、清理标签和更新值；`MetricsHTTPServer` 不认识 SSP 或数据库。
+- `SubscriptionTrafficMetrics` 保存最新订阅流量快照，并在采集时生成 Counter；`MetricsHTTPServer` 不认识 SSP 或数据库。
 - `SubscriptionTrafficExporter` 调用装配时传入的采集函数，通过可选回调通知上报方，不绑定 InfluxDB。
 - `InfluxDB3Client` 处理 HTTP API；流量表语义属于 writer/codec，上报启用和失败降级属于 reporter。
 - `sspgateway` 的脱敏与终端渲染分离；包入口导出 `SSPGateway`、模型、异常和 bootstrap 常量。
@@ -56,18 +56,18 @@ kazu/
 `GET /metrics` → `SubscriptionTrafficExporter` → `SSPSource.collect()` → `SubscriptionTrafficSnapshot`。
 `ssp get` 同样调用 `SSPSource.collect()`，展示层从快照读取数据；采集与规范化只有一个入口。
 有效快照非阻塞地交给可选的 InfluxDB reporter 后台队列；当天数据用于更新
-`SubscriptionTrafficMetrics` 中的 Gauge。采集过程串行，重叠请求返回 503；上报网络
+`SubscriptionTrafficMetrics` 中的 Counter。采集过程串行，重叠请求返回 503；上报网络
 请求只在 worker 中执行，错误由 reporter 记录，不中断指标生成。停止服务时 reporter
 停止接收新快照，排空最多一个待处理快照，并在有界期限内等待 worker 后释放资源。
 
 服务装配时创建一个独立 `CollectorRegistry` 和耗时 Gauge，通过
 `@scrape_duration.time()` 装饰调用 `source.collect()` 的采集函数，再传入 `SubscriptionTrafficExporter`。
-registry 和各 Gauge 在服务实例生命周期内复用；计时只覆盖抓取与规范化，不包含 InfluxDB 上报。
+registry 和流量 collector 在服务实例生命周期内复用；计时只覆盖抓取与规范化，不包含 InfluxDB 上报。
 耗时和流量独立注册，最后由 `generate_latest(registry)` 合并到同一次 HTTP 响应。
 `SubscriptionTrafficSnapshot` 不携带耗时，因此 InfluxDB 不会保存该指标。
 
-每次请求在同一把锁内采集、更新并生成响应；`SubscriptionTrafficMetrics.update()` 内部先清理各 Gauge
-的旧标签，再写入当前快照，避免标签残留和
+每次请求在同一把锁内采集、更新并生成响应；`SubscriptionTrafficMetrics.update()` 替换完整快照，
+collector 只基于当前快照生成 Counter，避免标签残留和
 半更新的响应。失败请求仍返回 503，不输出旧快照。独立 registry 不使用全局 `REGISTRY`，
 因此不输出默认的 Process、GC 和 Platform 指标。
 
