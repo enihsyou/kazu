@@ -8,6 +8,7 @@
 uv run kazu ssp --help
 uv run kazu ssp --docs
 uv run kazu ssp get
+uv run kazu ssp get --detail
 uv run kazu ssp get --authorization "Bearer <credential>"
 uv run kazu ssp metrics
 uv run kazu ssp metrics --host 0.0.0.0 --port 9101
@@ -35,6 +36,7 @@ docker run --rm -p 127.0.0.1:9101:9101 \
 - `--authorization`：完整的 `Bearer <credential>` 文本，覆盖配置文件。
 - `--timeout`：请求超时秒数。
 - `--verbose`：显示已脱敏的 HTTP 请求与响应。
+- `--detail`：按完整字节数显示流量，例如 `123,456,789 B`；默认使用较短的可读单位。
 
 ## `metrics` 子命令
 

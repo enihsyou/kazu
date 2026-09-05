@@ -55,7 +55,9 @@ class SSPConsole:
         self.console.print(Syntax(trace.request_http, "http", theme="ansi_dark", word_wrap=True))
         self.console.print(Syntax(trace.response_http, "http", theme="ansi_dark", word_wrap=True))
 
-    def report(self, snapshot: SubscriptionTrafficSnapshot, *, gateway: str) -> None:
+    def report(
+        self, snapshot: SubscriptionTrafficSnapshot, *, gateway: str, detail: bool = False
+    ) -> None:
         """Display the collected traffic snapshot as a summary and table."""
         accounts = ", ".join(sorted({usage.user_id for usage in snapshot.usages})) or "unknown"
         summary = (
@@ -69,23 +71,29 @@ class SSPConsole:
 
         table = Table(title="SSP Traffic Details", header_style="bold green")
         table.add_column("Date", style="cyan", no_wrap=True)
-        table.add_column("Upload", style="magenta", no_wrap=True)
-        table.add_column("Download", style="blue", no_wrap=True)
+        table.add_column("Upload", style="magenta", no_wrap=True, justify="right")
+        table.add_column("Download", style="blue", no_wrap=True, justify="right")
         table.add_column("Multiplier", style="yellow", no_wrap=True)
-        table.add_column("Total", style="bold", no_wrap=True)
+        table.add_column("Total", style="bold", no_wrap=True, justify="right")
         for usage in snapshot.usages:
             table.add_row(
                 usage.usage_date.isoformat(),
-                _format_bytes(usage.upload_bytes),
-                _format_bytes(usage.download_bytes),
+                _format_bytes(usage.upload_bytes, detail=detail),
+                _format_bytes(usage.download_bytes, detail=detail),
                 f"{usage.server_rate}x",
-                _format_bytes(usage.deducted_bytes),
+                _format_bytes(usage.deducted_bytes, detail=detail),
             )
         self.console.print(table)
 
 
-def _format_bytes(value: int | Decimal) -> str:
+def _format_bytes(value: int | Decimal, *, detail: bool = False) -> str:
     size = Decimal(value)
+    if detail:
+        formatted = format(size, ",f")
+        if size == size.to_integral():
+            formatted = format(size.to_integral(), ",f")
+        return f"{formatted} B"
+
     units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
     unit = units[0]
     for candidate in units:

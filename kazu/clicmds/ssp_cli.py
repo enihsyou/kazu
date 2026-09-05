@@ -54,6 +54,11 @@ class SSPCommand(
         )
         get_parser.set_defaults(func=self._run_get)
         _add_gateway_arguments(get_parser, config.timeout)
+        get_parser.add_argument(
+            "--detail",
+            action="store_true",
+            help="Display byte values in full with comma separators",
+        )
 
         metrics_parser = commands.add_parser(
             "metrics",
@@ -93,7 +98,9 @@ class SSPCommand(
             return EXIT_USAGE
         try:
             with source:
-                SSPConsole().report(source.collect(), gateway=config.gateway_base_url)
+                SSPConsole().report(
+                    source.collect(), gateway=config.gateway_base_url, detail=args.detail
+                )
         except SubscriptionTrafficCollectionError as exc:
             errors.error(str(exc))
             return EXIT_FAILURE
