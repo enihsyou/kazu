@@ -14,8 +14,8 @@ uv run kazu ssp metrics --host 127.0.0.1 --port 9101
 
 命令常驻运行，通过 `GET http://127.0.0.1:9101/metrics` 提供指标。`--host` 默认
 `127.0.0.1`，`--port` 默认 `9101`；Ctrl+C 停止服务。每次请求实时读取 SSP，不在后台
-定时轮询。指标使用 `prometheus-client` 构造，独立 registry 和 Gauge 在服务实例启动时
-创建一次并持续复用。每次更新时清理流量 Gauge 的旧标签，采集、更新和响应生成均在
+定时轮询。指标使用 `prometheus-client` 构造，独立 registry 和流量 collector 在服务实例启动时
+创建一次并持续复用。每次更新时替换流量快照及其标签，采集、更新和响应生成均在
 同一把锁内完成，避免上一次响应的 label 或数据残留。项目没有 Prometheus 连接配置或远程推送逻辑。
 
 响应使用显式创建的 `CollectorRegistry`，不使用默认全局 `REGISTRY`，因此不输出
@@ -24,7 +24,7 @@ uv run kazu ssp metrics --host 127.0.0.1 --port 9101
 旧版 stdout/`--output PATH`/`.prom` 文件方式已移除；原有定时命令和 textfile collector
 需要改为常驻进程加 HTTP scrape。启动前需配置有效的 SSP Authorization。
 
-只输出当前业务日截至本次查询时刻的累计总量（today total），三个指标均为 Gauge：
+只输出当前业务日截至本次查询时刻的累计总量（today total），保留三个 Gauge：
 
 ```text
 kazu_subscription_traffic_upload_bytes{provider="ssp",user_id="8780",server_rate="1.00"}
@@ -34,10 +34,32 @@ kazu_subscription_traffic_deducted_bytes{provider="ssp",user_id="8780",server_ra
 
 它们分别表示实际上行、实际下行和扣除流量，单位都是 bytes。数值在同一业务日内随
 使用量递增，并在进入下一业务日后重置为新一天的累计值；它们是上游提供的当日总量，
-不是把每次采集区间流量累加起来的 Counter。label 只有固定的
+不是把每次采集值再次累加。label 只有固定的
 `provider="ssp"`、上游 `user_id` 与 API 返回的 `server_rate`；不添加 `date`、
 `record_at` 或查询时间 label。Prometheus 的正常采集时间负责形成当天的时间序列；不
-进行历史日期回填，也不构造 Counter。
+进行历史日期回填。
+
+同时并列输出相同快照、相同标签的三个 Counter，供观察比较：
+
+```text
+kazu_subscription_traffic_upload_bytes_total
+kazu_subscription_traffic_download_bytes_total
+kazu_subscription_traffic_deducted_bytes_total
+```
+
+Counter 直接暴露上游当日累计值，不在进程内累加，跨日随上游重置。其语义假设是
+同一标签序列在业务日内只增不减；如果上游向下修正，Prometheus 会把下降视为重置，
+可能高估消耗量，可通过 `resets` 观察。使用 `rate` 或 `increase` 时先对各序列计算，
+再聚合标签，例如：
+
+```promql
+sum(rate(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}[$__rate_interval]))
+sum(increase(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}[1h]))
+sum(resets(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}[$__range]))
+```
+
+`rate` 的单位为 bytes/s，`increase` 使用窗口边界外推，因此结果可能是小数。
+扣除流量仍直接使用 deducted 指标，不用上传与下载相加替代。
 
 查询当前累计量时，应取所需标签序列在查询窗口内的最后一个有效样本，不能对时间轴上
 的样本求和。查询每日累计量时，应取该业务日最后一个有效样本；查询小时消耗量时，应

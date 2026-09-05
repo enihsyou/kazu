@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from prometheus_client import CollectorRegistry, Gauge
+from collections.abc import Iterator
+
+from prometheus_client import CollectorRegistry
+from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
 
 from kazu.lib.traffic import SubscriptionTrafficUsage
 
@@ -25,23 +28,24 @@ _SUBSCRIPTION_TRAFFIC_LABELS = ("provider", "user_id", "server_rate")
 
 
 class SubscriptionTrafficMetrics:
-    """Own reusable subscription traffic gauges for one exporter instance."""
+    """Expose each upstream snapshot as parallel gauges and daily counters."""
 
     def __init__(self, registry: CollectorRegistry) -> None:
-        self._gauges = {
-            attribute: Gauge(
-                name, description, labelnames=_SUBSCRIPTION_TRAFFIC_LABELS, registry=registry
-            )
-            for name, attribute, description in _SUBSCRIPTION_TRAFFIC_METRICS
-        }
+        self._usages: tuple[SubscriptionTrafficUsage, ...] = ()
+        registry.register(self)
 
     def update(self, usages: tuple[SubscriptionTrafficUsage, ...]) -> None:
         """Replace all previous label sets and values with the current snapshot."""
-        for attribute, gauge in self._gauges.items():
-            gauge.clear()
-            for usage in usages:
-                gauge.labels(
-                    provider=usage.provider,
-                    user_id=usage.user_id,
-                    server_rate=usage.server_rate,
-                ).set(getattr(usage, attribute))
+        self._usages = usages
+
+    def collect(self) -> Iterator[GaugeMetricFamily | CounterMetricFamily]:
+        for name, attribute, description in _SUBSCRIPTION_TRAFFIC_METRICS:
+            gauge = GaugeMetricFamily(name, description, labels=_SUBSCRIPTION_TRAFFIC_LABELS)
+            counter = CounterMetricFamily(name, description, labels=_SUBSCRIPTION_TRAFFIC_LABELS)
+            for usage in self._usages:
+                labels = [usage.provider, usage.user_id, usage.server_rate]
+                value = getattr(usage, attribute)
+                gauge.add_metric(labels, value)
+                counter.add_metric(labels, value)
+            yield gauge
+            yield counter
