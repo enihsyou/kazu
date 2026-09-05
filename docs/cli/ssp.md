@@ -53,9 +53,10 @@ docker run --rm -p 127.0.0.1:9101:9101 \
 推荐让 Grafana Alloy 的 `prometheus.scrape` 直接拉取 `/metrics`，不使用 textfile
 collector、Pushgateway 或定时重复启动命令。详见[采集配置示例](../metrics.md#推荐使用-grafana-alloy-采集)。
 
-默认不连接 InfluxDB。增加 `--push-influxdb` 后，启动时检查配置和数据库查询权限；
-通过后，每次成功采集的数据都会尝试写入 InfluxDB 3：当日按采集时刻追加，历史业务日
-固定写到该日最后一秒。没有 scrape 就不会产生采集或上报。
+默认不连接 InfluxDB。增加 `--push-influxdb` 后，启动时查询一次目标 measurement 是否
+存在，以检查配置和数据库查询权限；通过后，每次成功采集的数据都会非阻塞地交给后台
+线程尝试写入 InfluxDB 3：当日按采集时刻追加，历史业务日固定写到该日最后一秒。没有
+scrape 就不会产生采集或上报。
 
 选项：
 
@@ -136,14 +137,19 @@ timeout = 15.0
 启动行为：
 
 - 未传 `--push-influxdb`：INFO 提示未启用上报，不访问 InfluxDB。
-- 已传参数：使用配置中的 database/token 调用 `/api/v3/query_sql` 执行
-  `SELECT 1 AS ready`。成功时 INFO 提示将上报。
+- 已传参数：使用配置中的 database/token 调用 `/api/v3/query_sql` 查询一次
+  `information_schema.tables`。成功时 INFO 提示将由后台线程上报。
 - 配置不完整或检查失败：WARNING 提示不会上报，但 `/metrics` 服务继续运行；修复配置
   后需要重启命令。启动检查不创建数据库，也不写入探测点。
-- 后续写入失败：记录 ERROR，本次指标响应不因该错误变为失败，下次采集继续尝试上报。
+- 后续写入失败：记录 ERROR，本次指标响应不因该错误变为失败；失败的历史最终值不会
+  记入内存，下次采集可再次尝试上报。
 
 `/ping` 只能检查服务状态，不能证明指定数据库和写入权限有效。这里的 SQL 检查验证
 数据库查询是否可用，写入权限仍由实际写入确认。
+
+InfluxDB 上报队列只保留一个待处理快照。数据库写入较慢时，新快照会替换尚未开始处理的
+旧快照，`/metrics` 不等待数据库网络请求。历史最终值只与当前进程内成功写入后保存的
+内存记录比较；进程重启不会查询数据库恢复该记录。
 
 ## 内置加密配置来源
 

@@ -26,8 +26,6 @@ DEFAULT_API_BASE_URL = "https://s1.thefew01.top/api/v1"
 DEFAULT_GATEWAY_BASE_URL = "https://x1.thecores.top"
 """Provide the default encrypted gateway base URL."""
 
-DEFAULT_TRAFFIC_ENDPOINT = "user/stat/getTrafficLog"
-"""Provide the default read-only traffic endpoint."""
 _BEARER_AUTH_RE = re.compile(r"^Bearer ([^\s]+)$", re.IGNORECASE)
 
 
@@ -95,7 +93,7 @@ class SSPGateway:
 
     def get_traffic_log(self) -> TrafficLogResult:
         """Fetch and parse the authenticated user's traffic log."""
-        return parse_traffic_log(self._get_json(DEFAULT_TRAFFIC_ENDPOINT))
+        return parse_traffic_log(self._get_json("user/stat/getTrafficLog"))
 
     def _get_json(self, endpoint: str) -> APIResult:
         api_url = urljoin(f"{self.api_base_url}/", endpoint.lstrip("/"))

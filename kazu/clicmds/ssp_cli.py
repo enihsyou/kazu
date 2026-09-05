@@ -88,7 +88,7 @@ class SSPCommand(
         metrics_parser.add_argument(
             "--push-influxdb",
             action="store_true",
-            help="Enable InfluxDB 3 reporting after a database/token query check",
+            help="Enable background InfluxDB 3 reporting after a startup table check",
         )
 
     def _show_help(self, args: argparse.Namespace) -> int:
@@ -160,7 +160,7 @@ def _serve_metrics(args: argparse.Namespace, config: AppConfig, source: SSPSourc
             collect, registry=registry, on_collect=reporter.report
         )
         server = resources.enter_context(MetricsHTTPServer(args.host, args.port, exporter.render))
-        # Bind before probing InfluxDB; close the listener before closing clients.
+        # Bind before probing InfluxDB; close the listener before draining the reporter.
         reporter.start()
         _LOGGER.info("Serving SSP metrics at %s (Ctrl+C to stop).", server.metrics_url)
         server.serve_forever()

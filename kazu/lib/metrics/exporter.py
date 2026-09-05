@@ -36,7 +36,7 @@ class SubscriptionTrafficExporter:
         """Collect a fresh snapshot and render its current metrics."""
         # Reject overlapping scrapes instead of queuing upstream requests and writes.
         if not self._lock.acquire(blocking=False):
-            raise MetricsUnavailable("# A traffic collection is already in progress.")
+            raise MetricsUnavailable("A traffic collection is already in progress.")
         try:
             self._collect_metrics()
             return generate_latest(self._registry)

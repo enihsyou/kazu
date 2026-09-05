@@ -82,7 +82,7 @@ last_over_time((sum(kazu_subscription_traffic_deducted_bytes{provider=~"$provide
 
 请求失败或响应中没有当前业务日时，`/metrics` 返回 HTTP 503，Alloy 将这次 scrape
 视为失败；不会返回旧值或人为补零。并发采集重叠时额外请求也返回 503，以避免重复请求
-上游和同时写库。下一次请求会重新采集。其他路径返回 404。
+上游。下一次请求会重新采集。其他路径返回 404。
 
 ### 推荐使用 Grafana Alloy 采集
 
@@ -102,9 +102,8 @@ prometheus.scrape "kazu_ssp" {
 ```
 
 当前部署以 10 秒作为采集间隔；按业务需要调整时，应同时评估 SSP 请求频率与响应时间。
-`scrape_timeout` 要覆盖 SSP 请求以及启用时的 InfluxDB 查询/写入耗时，不得大于
-`scrape_interval`。SSP 的 `--timeout` 和 `[influxdb3].timeout` 是单次 HTTP 请求超时，
-不是整个 scrape 的总时限；历史日逐条查重会累加耗时。
+`scrape_timeout` 只需覆盖 SSP 请求和指标生成，不得大于 `scrape_interval`。InfluxDB
+写入由后台线程处理，不计入 scrape；`[influxdb3].timeout` 只限制后台单次 HTTP 请求。
 配置项参见 [Alloy prometheus.scrape 文档](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.scrape/)。
 
 同机采集可使用默认监听地址。跨主机或跨容器采集时，Kazu 使用 `--host 0.0.0.0`，
@@ -116,14 +115,17 @@ prometheus.scrape "kazu_ssp" {
 
 只有显式指定 `kazu ssp metrics --push-influxdb`，且启动检查通过后才写 InfluxDB 3。
 未启用时记录 INFO 并且不连接数据库。启用时要求完整的 host/database/token 配置，
-通过带数据库和 token 的 `SELECT 1 AS ready` 检查后记录 INFO，开始上报；检查失败
-记录 WARNING，当前进程禁用上报但继续提供 `/metrics`。SQL 检查不写探测点，能确认
-数据库查询权限，不能提前证明写入权限；token 应同时具有查询和写入权限。
+启动时通过 `information_schema.tables` 查询检查目标 measurement 是否存在，成功后记录
+INFO 并启动后台上报；检查失败记录 WARNING，当前进程禁用上报但继续提供 `/metrics`。
+该检查不写探测点，能确认数据库查询权限，不能提前证明写入权限；token 应同时具有查询
+和写入权限。表是否存在只在启动时查询一次，不在每次上报前重复查询。
 具体配置参见 [SSP 命令文档](cli/ssp.md#authorization)。
 
-上报随 scrape 发生，不独立定时运行。每次写入都会包含
-当前业务日和上游返回的历史业务日：当前日使用实际采集时间作为 InfluxDB 时间戳，持续
-追加快照；历史日使用其本机时区最后一秒作为时间戳（InfluxDB 时间戳按 UTC 存储）。
+上报随 scrape 入队，不独立定时采集。`/metrics` 只做非阻塞入队，不等待 InfluxDB
+查询、写入或超时。后台队列保留一个待处理快照；数据库较慢且新快照到达时，用新快照
+替换尚未开始处理的旧快照。每次实际写入包含当前业务日和上游返回的历史业务日：当前日
+使用实际采集时间作为 InfluxDB 时间戳，持续追加快照；历史日使用其本机时区最后一秒作为
+时间戳（InfluxDB 时间戳按 UTC 存储）。
 
 表（measurement）为 `subscription_traffic_daily`。业务日期由 `usage_date` 字段表达。
 查询历史业务日时，优先取该日固定 `23:59:59` 时间点的记录；如果尚未补写历史记录，
@@ -149,13 +151,15 @@ deducted_bytes = (upload_bytes + download_bytes) × server_rate
 ```
 
 原始流量值保留为整数 bytes，不做展示层单位换算。当前日的多次采集按采集时刻追加；
-历史日只对其固定最终时间点查重，相同数据跳过，不同数据报冲突，避免静默改写历史
-事实。前一天留下的当日采集快照不会被误判成多条历史最终记录。
+历史日最终值保存在当前进程内存中：成功写入后，相同值跳过，不同值报冲突，避免当前
+进程静默改写历史事实。写入失败不会更新内存记录，后续快照仍可重试；进程重启后内存
+记录会清空，因此数据库不会用于跨进程查重。
 
-写入失败记录 ERROR，不终止指标服务，也不把已经采集成功的当前日指标判为失败；
-后续 scrape 会再次尝试。若上游只返回历史日、没有今天的数据，可以上报这些有效历史
-记录，但本次 `/metrics` 仍返回 503。建议每个账户只运行一个开启上报的 Kazu 实例，
-避免跨进程的历史查重/写入竞争。修改配置或修复启动检查问题后需要重启命令。
+写入失败记录 ERROR，不终止指标服务，也不把已经采集成功的当前日指标判为失败；失败的
+历史最终值不会被记为已写入，后续包含该值的快照可再次尝试。若上游只返回历史日、没有
+今天的数据，可以将这些有效历史记录入队，但本次 `/metrics` 仍返回 503。建议每个账户
+只运行一个开启上报的 Kazu 实例，避免跨进程重复写入。修改配置或修复启动检查问题后
+需要重启命令。
 
 ### 月末边界
 

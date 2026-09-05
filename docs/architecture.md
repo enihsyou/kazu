@@ -55,9 +55,10 @@ kazu/
 
 `GET /metrics` → `SubscriptionTrafficExporter` → `SSPSource.collect()` → `SubscriptionTrafficSnapshot`。
 `ssp get` 同样调用 `SSPSource.collect()`，展示层从快照读取数据；采集与规范化只有一个入口。
-有效快照交给可选的 InfluxDB reporter；当天数据用于更新 `SubscriptionTrafficMetrics` 中的 Gauge。
-采集过程串行，重叠请求返回 503；上报错误由 reporter 记录，不中断指标生成。
-停止服务时先等待正在处理的请求结束，再释放数据库与上游客户端。
+有效快照非阻塞地交给可选的 InfluxDB reporter 后台队列；当天数据用于更新
+`SubscriptionTrafficMetrics` 中的 Gauge。采集过程串行，重叠请求返回 503；上报网络
+请求只在 worker 中执行，错误由 reporter 记录，不中断指标生成。停止服务时 reporter
+停止接收新快照，排空最多一个待处理快照，并在有界期限内等待 worker 后释放资源。
 
 服务装配时创建一个独立 `CollectorRegistry` 和耗时 Gauge，通过
 `@scrape_duration.time()` 装饰调用 `source.collect()` 的采集函数，再传入 `SubscriptionTrafficExporter`。
