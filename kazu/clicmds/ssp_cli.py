@@ -59,6 +59,12 @@ class SSPCommand(
             action="store_true",
             help="Display byte values in full with comma separators",
         )
+        get_parser.add_argument(
+            "--watch",
+            type=_watch_interval,
+            metavar="INTERVAL",
+            help="Refresh traffic statistics every INTERVAL seconds",
+        )
 
         metrics_parser = commands.add_parser(
             "metrics",
@@ -98,9 +104,20 @@ class SSPCommand(
             return EXIT_USAGE
         try:
             with source:
-                SSPConsole().report(
-                    source.collect(), gateway=config.gateway_base_url, detail=args.detail
-                )
+                display = SSPConsole()
+                snapshot = source.collect()
+                if args.watch is None:
+                    display.report(snapshot, gateway=config.gateway_base_url, detail=args.detail)
+                else:
+                    display.watch(
+                        snapshot,
+                        collect=source.collect,
+                        interval=args.watch,
+                        gateway=config.gateway_base_url,
+                        detail=args.detail,
+                    )
+        except KeyboardInterrupt:
+            return EXIT_SUCCESS
         except SubscriptionTrafficCollectionError as exc:
             errors.error(str(exc))
             return EXIT_FAILURE
@@ -198,7 +215,15 @@ def _port(value: str) -> int:
 
 
 def _timeout(value: str) -> float:
-    timeout = float(value)
-    if not math.isfinite(timeout) or timeout <= 0:
-        raise argparse.ArgumentTypeError("timeout must be a finite positive number")
-    return timeout
+    return _positive_number(value, name="timeout")
+
+
+def _watch_interval(value: str) -> float:
+    return _positive_number(value, name="watch interval")
+
+
+def _positive_number(value: str, *, name: str) -> float:
+    number = float(value)
+    if not math.isfinite(number) or number <= 0:
+        raise argparse.ArgumentTypeError(f"{name} must be a finite positive number")
+    return number

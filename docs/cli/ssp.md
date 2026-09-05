@@ -9,6 +9,8 @@ uv run kazu ssp --help
 uv run kazu ssp --docs
 uv run kazu ssp get
 uv run kazu ssp get --detail
+uv run kazu ssp get --watch 5
+uv run kazu ssp get --detail --watch 5
 uv run kazu ssp get --authorization "Bearer <credential>"
 uv run kazu ssp metrics
 uv run kazu ssp metrics --host 0.0.0.0 --port 9101
@@ -37,6 +39,10 @@ docker run --rm -p 127.0.0.1:9101:9101 \
 - `--timeout`：请求超时秒数。
 - `--verbose`：显示已脱敏的 HTTP 请求与响应。
 - `--detail`：按完整字节数显示流量，例如 `123,456,789 B`；默认使用较短的可读单位。
+- `--watch INTERVAL`：每隔指定秒数重新查询并原位刷新表格。第二次查询起，上传、下载和
+  扣除总量会在累计值后显示相对上一轮的非零变化，例如 `Δ123 B`。当天变化显示为绿色，
+  历史日期变化显示为红色；汇总中的 `last_data_at` 保留最近一次检测到数据变化的时间。
+  按 Ctrl+C 停止。
 
 ## `metrics` 子命令
 
