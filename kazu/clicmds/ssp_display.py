@@ -8,7 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from rich.align import Align
-from rich.console import Console, Group, RenderableType
+from rich.console import Console, Group
 from rich.live import Live
 from rich.logging import RichHandler
 from rich.panel import Panel
@@ -39,7 +39,6 @@ class SSPConsole:
 
     def __init__(self, *, stderr: bool = False) -> None:
         self.console = Console(stderr=stderr)
-        """Store the Rich console used for terminal output."""
 
     def configure_logging(self) -> None:
         """Configure terminal rendering or unwrapped logs for redirected output."""
@@ -105,7 +104,7 @@ class SSPConsole:
             while True:
                 time.sleep(interval)
                 snapshot = collect()
-                if _traffic_changed(previous, snapshot):
+                if previous.usages != snapshot.usages:
                     last_data_at = snapshot.observed_at
                 live.update(
                     self._report(
@@ -129,7 +128,7 @@ class SSPConsole:
         previous: SubscriptionTrafficSnapshot | None = None,
         last_data_at: datetime | None = None,
         widths: _TrafficWidths | None = None,
-    ) -> RenderableType:
+    ) -> Group:
         """Build a summary and traffic table for printing or live refresh."""
         accounts = ", ".join(sorted({usage.user_id for usage in snapshot.usages})) or "unknown"
         summary = [
@@ -162,10 +161,13 @@ class SSPConsole:
         table.add_column(Align.right("Download"), style="blue", no_wrap=True)
         table.add_column("Multiplier", style="yellow", no_wrap=True)
         table.add_column(Align.right("Total"), style="bold", no_wrap=True)
-        previous_usages = _index_usages(previous)
+        previous_usages = (
+            None
+            if previous is None
+            else {(usage.user_id, usage.usage_date): usage for usage in previous.usages}
+        )
         upload_cells = _traffic_cells(
             snapshot,
-            previous,
             previous_usages,
             detail,
             lambda usage: usage.upload_bytes,
@@ -173,7 +175,6 @@ class SSPConsole:
         )
         download_cells = _traffic_cells(
             snapshot,
-            previous,
             previous_usages,
             detail,
             lambda usage: usage.download_bytes,
@@ -181,7 +182,6 @@ class SSPConsole:
         )
         deducted_cells = _traffic_cells(
             snapshot,
-            previous,
             previous_usages,
             detail,
             lambda usage: usage.deducted_bytes,
@@ -200,18 +200,9 @@ class SSPConsole:
         return table
 
 
-def _index_usages(
-    snapshot: SubscriptionTrafficSnapshot | None,
-) -> dict[tuple[str, date], SubscriptionTrafficUsage]:
-    if snapshot is None:
-        return {}
-    return {(usage.user_id, usage.usage_date): usage for usage in snapshot.usages}
-
-
 def _traffic_cells(
     current: SubscriptionTrafficSnapshot,
-    previous: SubscriptionTrafficSnapshot | None,
-    previous_usages: dict[tuple[str, date], SubscriptionTrafficUsage],
+    previous_usages: dict[tuple[str, date], SubscriptionTrafficUsage] | None,
     detail: bool,
     value_for: Callable[[SubscriptionTrafficUsage], int],
     widths: _ColumnWidths | None,
@@ -219,7 +210,11 @@ def _traffic_cells(
     values: list[tuple[str, str | None, str | None]] = []
     for usage in current.usages:
         value = value_for(usage)
-        delta = _usage_delta(previous, previous_usages, usage, value_for)
+        delta = None
+        if previous_usages is not None:
+            previous_usage = previous_usages.get((usage.user_id, usage.usage_date))
+            previous_value = 0 if previous_usage is None else value_for(previous_usage)
+            delta = value - previous_value
         delta_text = None if delta in (None, 0) else _format_delta_bytes(delta, detail=detail)
         delta_style = None
         if delta_text is not None:
@@ -239,19 +234,6 @@ def _traffic_cells(
     ]
 
 
-def _usage_delta(
-    previous: SubscriptionTrafficSnapshot | None,
-    previous_usages: dict[tuple[str, date], SubscriptionTrafficUsage],
-    usage: SubscriptionTrafficUsage,
-    value_for: Callable[[SubscriptionTrafficUsage], int],
-) -> int | None:
-    if previous is None:
-        return None
-    previous_usage = previous_usages.get((usage.user_id, usage.usage_date))
-    previous_value = 0 if previous_usage is None else value_for(previous_usage)
-    return value_for(usage) - previous_value
-
-
 def _aligned_traffic_cell(
     value: str,
     delta: str | None,
@@ -269,12 +251,6 @@ def _aligned_traffic_cell(
 
 def _format_delta_bytes(value: int | Decimal, *, detail: bool) -> str:
     return f"Δ{_format_bytes(value, detail=detail)}"
-
-
-def _traffic_changed(
-    previous: SubscriptionTrafficSnapshot, current: SubscriptionTrafficSnapshot
-) -> bool:
-    return previous.usages != current.usages
 
 
 def _format_time(value: datetime) -> str:
