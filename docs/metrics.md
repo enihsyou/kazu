@@ -71,9 +71,10 @@ last_over_time((sum(kazu_subscription_traffic_deducted_bytes_total{provider=~"$p
 抓取并规范化流量所用的秒数，不包含 InfluxDB 上报耗时。服务装配时直接使用该 Gauge
 的 `.time()` 装饰采集函数，与流量指标通过同一 registry 输出到 Prometheus，不写入 InfluxDB。
 
-请求失败或响应中没有当前业务日时，`/metrics` 返回 HTTP 503，Alloy 将这次 scrape
-视为失败；不会返回旧值或人为补零。并发采集重叠时额外请求也返回 503，以避免重复请求
-上游。下一次请求会重新采集。其他路径返回 404。
+请求失败时，`/metrics` 返回 HTTP 503，Alloy 将这次 scrape 视为失败。响应中没有当前
+业务日时，本次响应不包含三个流量 Counter，避免跨日后继续暴露昨天的累计值；抓取耗时
+Gauge 仍正常返回，原始历史记录仍可正常写入 InfluxDB。并发采集重叠时额外请求返回 503，
+以避免重复请求上游。下一次请求会重新采集。其他路径返回 404。
 
 ### 推荐使用 Grafana Alloy 采集
 
@@ -148,8 +149,8 @@ deducted_bytes = (upload_bytes + download_bytes) × server_rate
 
 写入失败记录 ERROR，不终止指标服务，也不把已经采集成功的当前日指标判为失败；失败的
 历史最终值不会被记为已写入，后续包含该值的快照可再次尝试。若上游只返回历史日、没有
-今天的数据，可以将这些有效历史记录入队，但本次 `/metrics` 仍返回 503。建议每个账户
-只运行一个开启上报的 Kazu 实例，避免跨进程重复写入。修改配置或修复启动检查问题后
+今天的数据，可以将这些有效历史记录入队，同时本次 `/metrics` 不包含三个流量 Counter。
+建议每个账户只运行一个开启上报的 Kazu 实例，避免跨进程重复写入。修改配置或修复启动检查问题后
 需要重启命令。
 
 ### 月末边界

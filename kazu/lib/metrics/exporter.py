@@ -7,7 +7,10 @@ from threading import Lock
 from prometheus_client import CollectorRegistry, generate_latest
 
 from kazu.lib.metrics.traffic import SubscriptionTrafficMetrics
-from kazu.lib.traffic import SubscriptionTrafficCollectionError, SubscriptionTrafficSnapshot
+from kazu.lib.traffic import (
+    SubscriptionTrafficCollectionError,
+    SubscriptionTrafficSnapshot,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,8 +55,4 @@ class SubscriptionTrafficExporter:
 
         if self._on_collect is not None:
             self._on_collect(snapshot)
-        current = snapshot.current_usages
-        if not current:
-            _LOGGER.warning("The source returned no traffic for today's local business date.")
-            raise MetricsUnavailable("No traffic record for today's local business date.")
-        self._subscription_traffic_metrics.update(current)
+        self._subscription_traffic_metrics.update(snapshot.current_usages)

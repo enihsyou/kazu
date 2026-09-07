@@ -50,6 +50,11 @@ docker run --rm -p 127.0.0.1:9101:9101 \
 `http://127.0.0.1:9101/metrics`，按 Ctrl+C 停止。每次 `GET /metrics` 才请求 SSP，
 由 `prometheus-client` 构造指标并生成 Prometheus exposition 响应。
 
+实际观测表明，上游流量数据不是实时更新：新的流量变化通常约 5 秒后才能查询到，刷新
+间隔并不固定。跨天后的当天记录也不会立即出现，因此刚过零点的查询可能仍只返回前一
+业务日的数据；在上游返回当天记录前，指标响应不会包含三个流量 Counter，以免将过时的
+历史累计值作为当天数据上报。
+
 推荐让 Grafana Alloy 的 `prometheus.scrape` 直接拉取 `/metrics`，不使用 textfile
 collector、Pushgateway 或定时重复启动命令。详见[采集配置示例](../metrics.md#推荐使用-grafana-alloy-采集)。
 
@@ -95,8 +100,9 @@ kazu_subscription_traffic_scrape_duration_seconds
 与流量指标在同一次 Prometheus 响应中输出，不写入 InfluxDB。
 
 三个流量指标都有 `provider="ssp"`、`user_id` 和 `server_rate` 三个 label；抓取耗时指标不带 label。`date`、
-`record_at` 和查询时间都不是 label。上游请求失败、当前日数据缺失或采集请求重叠时，
-`/metrics` 返回 HTTP 503，不返回旧数据或人为补零；下一次 scrape 会重新尝试。
+`record_at` 和查询时间都不是 label。当前日数据缺失时，本次响应不包含三个流量 Counter，
+避免跨日后继续暴露昨天的累计值；抓取耗时 Gauge 仍正常返回。上游请求失败或采集请求
+重叠时，`/metrics` 返回 HTTP 503。下一次 scrape 会重新尝试。
 其他路径返回 HTTP 404。启动和上报状态通过 stderr 中的 INFO/WARNING/ERROR 日志显示。
 
 监听地址没有内置认证或 TLS；不要直接暴露到公网。

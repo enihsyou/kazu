@@ -39,6 +39,8 @@ class SubscriptionTrafficMetrics:
         self._usages = usages
 
     def collect(self) -> Iterator[CounterMetricFamily]:
+        if not self._usages:
+            return
         for name, attribute, description in _SUBSCRIPTION_TRAFFIC_METRICS:
             counter = CounterMetricFamily(name, description, labels=_SUBSCRIPTION_TRAFFIC_LABELS)
             for usage in self._usages:
