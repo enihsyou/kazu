@@ -50,3 +50,4 @@ VOLUME ["/root/.config/kazu"]
 EXPOSE 9101
 
 ENTRYPOINT ["kazu"]
+CMD ["metrics", "--host", "0.0.0.0"]

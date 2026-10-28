@@ -1,42 +1,49 @@
 # Kazu (数)
 
-A Python CLI managed by uv that collects structured usage statistics from read-only APIs.
-
-## Requirements
-
-- Python 3.11+
-- uv
-
-## Setup
+A Prometheus exporter for account balances, usage and quotas, managed with uv.
+Python 3.11+ is required.
 
 ```bash
 uv sync
+uv run kazu metrics
+uv run kazu status
+uv run kazu status --json
 ```
 
-## Usage
+Enable the sources you want in `config.toml`. All fields have defaults; sources
+are disabled by default. This minimal configuration uses the current CLI login:
 
-```bash
-uv run kazu --help
+```toml
+[sources.tinyfish]
+enabled = true
+
+[sources.firecrawl]
+enabled = true
+
+[sources.parallel]
+enabled = true
 ```
 
-Serve SSP traffic metrics for Grafana Alloy:
+The initial search providers use the installed official TinyFish, Firecrawl and
+Parallel CLIs. Exa and Tavily have configuration sections and an API adapter
+extension point; search API adapters are not implemented in this release.
+SSP remains available through `kazu ssp get` and the unified metrics endpoint.
 
-```bash
-uv run kazu ssp metrics --host 127.0.0.1 --port 9101
-```
-
-Configure SSP authorization first. This is a long-running service exposing
-`GET /metrics`, not stdout or a `.prom` textfile exporter. Add `--push-influxdb`
-to opt into InfluxDB 3 reporting after its startup database/token query check.
-See [SSP commands](docs/cli/ssp.md), [metrics and Alloy scrape configuration](docs/metrics.md),
-and [code organization](docs/architecture.md).
-
-## Configuration
-
-The app uses built-in defaults when no config file exists.
-
-If you want a persistent config file, create one under the platform config directory.
+Configuration locations:
 
 - Linux: `~/.config/kazu/config.toml`
 - macOS: `~/Library/Application Support/kazu/config.toml`
-- Windows: `%APPDATA%\\KokomiNetwork\\kazu\\config.toml`
+- Windows: `%LOCALAPPDATA%/KokomiNetwork/kazu/config.toml`
+
+Use `kazu metrics --config /path/to/config.toml` or `kazu status --config ...` to
+select another file. Put credentials in the `.env` beside that file, never in
+TOML. Process environment variables take precedence. See [.env.example](.env.example)
+and [the default configuration](kazu/default_config.toml).
+
+`GET /metrics` reads cached data without waiting for upstream queries. Each
+source polls independently, pauses after its configured number of unconsumed
+polls, and resumes asynchronously on the next Collect. The waking response
+omits that source's business metrics until a later scrape can read fresh data.
+
+See [metrics and configuration](docs/metrics.md), [status](docs/cli/status.md),
+[SSP commands](docs/cli/ssp.md), and [architecture](docs/architecture.md).

@@ -1,162 +1,146 @@
-# 指标与流量历史
-
-## SSP 代理订阅流量
-
-`kazu ssp metrics` 按 `record_at` 在本机时区解释业务日。上游的
-`record_at` 是日期锚点，不是流量事件发生时间；“今天”、跨日、跨月和跨年判断都使用
-该时区。
-
-### Prometheus HTTP 服务
+# Metrics 与配置
 
 ```bash
-uv run kazu ssp metrics --host 127.0.0.1 --port 9101
+uv run kazu metrics
+uv run kazu metrics --config ./config.toml
+uv run kazu metrics --host 0.0.0.0 --port 9101
 ```
 
-命令常驻运行，通过 `GET http://127.0.0.1:9101/metrics` 提供指标。`--host` 默认
-`127.0.0.1`，`--port` 默认 `9101`；Ctrl+C 停止服务。每次请求实时读取 SSP，不在后台
-定时轮询。指标使用 `prometheus-client` 构造，独立 registry 和流量 collector 在服务实例启动时
-创建一次并持续复用。每次更新时替换流量快照及其标签，采集、更新和响应生成均在
-同一把锁内完成，避免上一次响应的 label 或数据残留。项目没有 Prometheus 连接配置或远程推送逻辑。
+服务只提供 `GET /metrics`，默认监听 `127.0.0.1:9101`。各数据源在后台独立查询；
+Prometheus Collect 读取不可变快照，不等待 CLI 或上游 HTTP 请求。
 
-响应使用显式创建的 `CollectorRegistry`，不使用默认全局 `REGISTRY`，因此不输出
-默认 Process、GC、Platform collectors 的 `process_*`、`python_gc_*` 或 `python_info` 指标。
+## 配置
 
-启动前需配置有效的 SSP Authorization，并由常驻进程通过 HTTP 提供 scrape。
+所有字段均可省略，未填写的字段使用默认值。数据源默认禁用，需要显式启用。
 
-流量指标使用三个 Counter，表示当前业务日截至本次查询时刻的累计总量（today total）：
+```toml
+[metrics]
+host = "127.0.0.1"
+port = 9101
 
-```text
-kazu_subscription_traffic_upload_bytes_total{provider="ssp",user_id="8780",server_rate="1.00"}
-kazu_subscription_traffic_download_bytes_total{provider="ssp",user_id="8780",server_rate="1.00"}
-kazu_subscription_traffic_deducted_bytes_total{provider="ssp",user_id="8780",server_rate="1.00"}
+[sources.tinyfish]
+enabled = true
+source = "auto"
+interval = 120
+idle_poll_limit = 5
 ```
 
-它们分别表示实际上行、实际下行和扣除流量，单位都是 bytes。数值在同一业务日内随
-使用量递增，并在进入下一业务日后重置为新一天的累计值；它们是上游提供的当日总量，
-不是把每次采集值再次累加。label 只有固定的
-`provider="ssp"`、上游 `user_id` 与 API 返回的 `server_rate`；不添加 `date`、
-`record_at` 或查询时间 label。Prometheus 的正常采集时间负责形成当天的时间序列；不
-进行历史日期回填。
+`ssp`、`exa`、`tinyfish`、`tavily`、`firecrawl`、`parallel` 各有独立的配置节。
+共同配置项：
 
-Counter 直接暴露上游当日累计值，不在进程内累加，跨日随上游重置。其语义假设是
-同一标签序列在业务日内只增不减；如果上游向下修正，Prometheus 会把下降视为重置，
-可能高估消耗量，可通过 `resets` 观察。使用 `rate` 或 `increase` 时先对各序列计算，
-再聚合标签，例如：
+| 字段 | 默认值 | 含义 |
+| --- | --- | --- |
+| `enabled` | `false` | 是否启用该数据源 |
+| `source` | `"auto"` | `auto` 优先 CLI，然后 API；也可指定 `cli` 或 `api` |
+| `interval` | `120` | 一次查询结束后，到下一次查询的间隔，单位秒 |
+| `timeout` | `30` | 单个 CLI 命令或 HTTP 请求的超时秒数 |
+| `idle_poll_limit` | `5` | 未被 Collect 消费的连续查询次数上限，必须为正整数 |
+| `command` | `""` | CLI 可执行文件名或路径；留空使用该服务的标准命令名 |
 
-```promql
-sum(rate(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}[$__rate_interval]))
-sum(increase(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}[1h]))
-sum(resets(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}[$__range]))
+Metrics 服务没有抓取间隔命令行参数。CLI 路径应当只包含可执行文件路径，不含参数。
+CLI 必须提前安装并登录；Exporter 不安装 CLI，也不发起交互登录。
+
+## 当前数据源
+
+| 来源 | 初版接入 | 导出内容 |
+| --- | --- | --- |
+| TinyFish | `tinyfish wallet status`、`tinyfish search usage --limit 1` | USD 钱包余额、全部历史搜索调用数 |
+| Firecrawl | `firecrawl credit-usage --json` | 账户剩余 credits、当前套餐 credits 限额 |
+| Parallel | `parallel-cli balance --json get` | USD 预付余额、待扣金额、后付费状态 |
+| SSP | 内置 API | 当前业务日上传、下载、扣费流量 |
+| Exa、Tavily | 预留 API 适配入口 | 初版启用后会明确报告尚未实现 |
+
+`auto` 会先查询 CLI；CLI 不存在、未认证或查询失败时，才尝试已实现的 API 适配器。
+初版搜索来源只有 CLI 适配器，指定 `source="api"` 会报告尚未实现。
+SSP 的 `auto` 使用内置 API，不支持 CLI 来源。
+
+TinyFish 钱包和搜索用量分别查询。旧账户没有钱包时仍可输出成功取得的搜索用量，
+状态为 `partial`。Firecrawl 的账户余额可能包含额外充值，不能与套餐额度直接相减
+得到真实消耗。Parallel 的待扣金额不是累计消费；后付费账户只输出后付费状态，
+不将 API 固定返回的零余额解释为额度耗尽。无法获得的指标不会补成零。
+
+## 凭据
+
+配置文件只能包含非敏感字段。API Key、Token、Authorization 字段不能写进 TOML。
+在实际配置文件所在目录创建 `.env`；不会读取工作目录下其他 `.env`。
+进程环境变量优先于 `.env`，`.env` 内容不会自动注入 CLI 子进程。
+
+```dotenv
+SSP_AUTHORIZATION="Bearer <credential>"
 ```
 
-`rate` 的单位为 bytes/s，`increase` 使用窗口边界外推，因此结果可能是小数。
-扣除流量仍直接使用 deducted 指标，不用上传与下载相加替代。
+搜索 CLI 复用自身现有登录凭据；`.env.example` 中的搜索 API Key 变量是为后续 API
+适配器预留的，初版不使用它们查询搜索账户。`.env` 已加入 Git 和 Docker 构建忽略列表。
+配置在命令启动时读取，修改后需要重启命令。
 
-查询当前累计量时，应取所需标签序列在查询窗口内的最后一个有效样本，不能对时间轴上
-的样本求和。查询每日累计量时，应取该业务日最后一个有效样本；查询小时消耗量时，应
-计算该小时末与小时初累计量之差，并处理跨日重置，避免把重置后的负差值当作流量。
-当看板需要忽略 `user_id` 与 `server_rate` 标签时，应先用 `sum` 合并标签，再用
-`last_over_time` 取得聚合后序列的最后一个有效样本。由于范围函数需要范围向量，
-PromQL 使用子查询语法，例如：
+## Watch 与 Collect
 
-```promql
-last_over_time((sum(kazu_subscription_traffic_deducted_bytes_total{provider=~"$provider"}))[2m:10s])
+启动时各来源立即进行一次后台查询，然后按自己的 `interval` 继续。
+每次 Collect 将未消费查询次数归零。查询尝试成功或失败都会计数；达到
+`idle_poll_limit` 后，如果到下一次查询时仍没有 Collect，就暂停 Watch、清除业务
+快照，并记录暂停日志。保留最后一次结果一个间隔，让阈值为 1 时仍有消费机会。
+
+暂停后的下一次 Collect 只发送唤醒信号并记录恢复日志，该次响应不包含该来源的
+业务指标。后台查询完成后，后续 Collect 才会包含新数据；并发 Collect 不会创建
+重复 worker。首次后台查询尚未完成时，同样不输出该来源的业务指标。
+
+单个来源失败不会影响其他来源，失败来源不继续输出其上次业务快照。响应保留
+诊断 Gauge，供 Prometheus 区分没有数据、失败和暂停：
+
+- `kazu_source_up{provider}`：最近一次查询完整成功为 1；失败、部分成功、初始或暂停为 0。
+- `kazu_source_watching{provider}`：Collect 取快照时是否正在 Watch。
+- `kazu_source_last_success_timestamp_seconds{provider}`：最近一次获得有效数据的 Unix 时间，尚无数据时为 0。
+- `kazu_source_query_duration_seconds{provider}`：最近一次查询耗时。
+
+搜索账户数据按单位统一为三个 Gauge 家族，均带 `provider`、`kind`、`scope` 标签：
+
+| 指标 | 单位 | 当前支持的 kind |
+| --- | --- | --- |
+| `kazu_search_money_usd` | 美元 | `remaining`（可用余额）、`pending_debit`（待扣金额） |
+| `kazu_search_credits` | credits | `remaining`（账户剩余）、`cap`（套餐额度） |
+| `kazu_search_calls` | 调用次数 | `used`（已调用次数） |
+
+`scope` 表示数据范围：`account` 为账户、`plan` 为套餐账期、`all_time` 为全部历史。
+待扣金额不等于累计消费；账户剩余 credits 和套餐 cap 的范围不同，不能直接相减。
+例如：
+
+```prometheus
+kazu_search_money_usd{provider="tinyfish",kind="remaining",scope="account"} 21.44
+kazu_search_credits{provider="firecrawl",kind="remaining",scope="account"} 1000
+kazu_search_credits{provider="firecrawl",kind="cap",scope="plan"} 500000
+kazu_search_calls{provider="tinyfish",kind="used",scope="all_time"} 42
 ```
 
-这里的 `sum` 只合并每个时刻的标签序列，不沿时间轴累加采集样本。看板中的“合计”、
-“总消耗”和“实际扣除流量”必须直接使用 `kazu_subscription_traffic_deducted_bytes_total`；
-不能用上传与下载相加代替，因为扣除流量已经应用了 `server_rate`。
+后付费标志属于诊断信息，单独使用 `kazu_source_postpaid{provider}`，不混入金额指标。
 
-此外，`kazu_subscription_traffic_scrape_duration_seconds` 是无 label 的 Gauge，记录本次从 SSP
-抓取并规范化流量所用的秒数，不包含 InfluxDB 上报耗时。服务装配时直接使用该 Gauge
-的 `.time()` 装饰采集函数，与流量指标通过同一 registry 输出到 Prometheus，不写入 InfluxDB。
+SSP 保留每日流量 Counter：`kazu_subscription_traffic_upload_bytes_total`、
+`kazu_subscription_traffic_download_bytes_total`、`kazu_subscription_traffic_deducted_bytes_total`，
+标签为 `provider`、`user_id`、`server_rate`。业务日期与本机时区一致。
 
-请求失败时，`/metrics` 返回 HTTP 503，Alloy 将这次 scrape 视为失败。响应中没有当前
-业务日时，本次响应不包含三个流量 Counter，避免跨日后继续暴露昨天的累计值；抓取耗时
-Gauge 仍正常返回，原始历史记录仍可正常写入 InfluxDB。并发采集重叠时额外请求返回 503，
-以避免重复请求上游。下一次请求会重新采集。其他路径返回 404。
+Prometheus 配置示例：
 
-### 推荐使用 Grafana Alloy 采集
-
-保持 Kazu 服务运行，在 Alloy 中添加以下组件。`prometheus.remote_write.default` 指向
-你已配置好的接收端；若名称不同，请替换 `forward_to` 的引用。
-
-```alloy
-prometheus.scrape "kazu_ssp" {
-  targets = [
-    { "__address__" = "127.0.0.1:9101" },
-  ]
-  metrics_path    = "/metrics"
-  scrape_interval = "10s"
-  scrape_timeout  = "10s"
-  forward_to     = [prometheus.remote_write.default.receiver]
-}
+```yaml
+scrape_configs:
+  - job_name: kazu
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["127.0.0.1:9101"]
 ```
 
-当前部署以 10 秒作为采集间隔；按业务需要调整时，应同时评估 SSP 请求频率与响应时间。
-`scrape_timeout` 只需覆盖 SSP 请求和指标生成，不得大于 `scrape_interval`。InfluxDB
-写入由后台线程处理，不计入 scrape；`[influxdb3].timeout` 只限制后台单次 HTTP 请求。
-配置项参见 [Alloy prometheus.scrape 文档](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.scrape/)。
+## Docker
 
-同机采集可使用默认监听地址。跨主机或跨容器采集时，Kazu 使用 `--host 0.0.0.0`，
-将 `__address__` 改为 Alloy 实际可访问的主机/容器服务名。不要把 `0.0.0.0` 当作采集
-目标，也不要把 Alloy 容器内的 `127.0.0.1` 当作 Kazu 容器。服务没有内置认证/TLS，
-只应开放给可信采集端；需要公网访问时使用网络限制或带认证/TLS 的反向代理。
-
-### InfluxDB 3 记录
-
-只有显式指定 `kazu ssp metrics --push-influxdb`，且启动检查通过后才写 InfluxDB 3。
-未启用时记录 INFO 并且不连接数据库。启用时要求完整的 host/database/token 配置，
-启动时通过 `information_schema.tables` 查询检查目标 measurement 是否存在，成功后记录
-INFO 并启动后台上报；检查失败记录 WARNING，当前进程禁用上报但继续提供 `/metrics`。
-该检查不写探测点，能确认数据库查询权限，不能提前证明写入权限；token 应同时具有查询
-和写入权限。表是否存在只在启动时查询一次，不在每次上报前重复查询。
-具体配置参见 [SSP 命令文档](cli/ssp.md#authorization)。
-
-上报随 scrape 入队，不独立定时采集。`/metrics` 只做非阻塞入队，不等待 InfluxDB
-查询、写入或超时。后台队列保留一个待处理快照；数据库较慢且新快照到达时，用新快照
-替换尚未开始处理的旧快照。每次实际写入包含当前业务日和上游返回的历史业务日：当前日
-使用实际采集时间作为 InfluxDB 时间戳，持续追加快照；历史日使用其本机时区最后一秒作为
-时间戳（InfluxDB 时间戳按 UTC 存储）。
-
-表（measurement）为 `subscription_traffic_daily`。业务日期由 `usage_date` 字段表达。
-查询历史业务日时，优先取该日固定 `23:59:59` 时间点的记录；如果尚未补写历史记录，
-则取该日最后一次采集快照。它们均为可获得的累计值，不等同于绝对结算结果。
-
-标签（tags）：
-
-- `provider`：固定为 `ssp`。
-- `user_id`：少数派侧用户 ID。
-
-字段（fields）：
-
-- `upload_bytes`：原始上行 bytes。
-- `download_bytes`：原始下行 bytes。
-- `deducted_bytes`：按 `server_rate` 计算出的扣除 bytes。
-- `server_rate`：API 返回的原始倍率文本。
-- `usage_date`：本机时区下的业务日期。
-
-扣除流量的定义为：
-
-```text
-deducted_bytes = (upload_bytes + download_bytes) × server_rate
+```bash
+docker run --rm -p 9101:9101 \
+  -v /path/to/kazu-config:/root/.config/kazu:ro \
+  kazu:latest
 ```
 
-原始流量值保留为整数 bytes，不做展示层单位换算。当前日的多次采集按采集时刻追加；
-历史日最终值保存在当前进程内存中：成功写入后，相同值跳过，不同值报冲突，避免当前
-进程静默改写历史事实。写入失败不会更新内存记录，后续快照仍可重试；进程重启后内存
-记录会清空，因此数据库不会用于跨进程查重。
+目录内放 `config.toml` 及可选的 `.env`。基础镜像提供 Python Exporter 与 SSP 支持；
+使用搜索 CLI 的自定义镜像还需要安装对应官方 CLI，并为容器内运行用户提供其登录状态。
+宿主机已有 CLI 和凭据不会自动出现在容器里。
 
-写入失败记录 ERROR，不终止指标服务，也不把已经采集成功的当前日指标判为失败；失败的
-历史最终值不会被记为已写入，后续包含该值的快照可再次尝试。若上游只返回历史日、没有
-今天的数据，可以将这些有效历史记录入队，同时本次 `/metrics` 不包含三个流量 Counter。
-建议每个账户只运行一个开启上报的 Kazu 实例，避免跨进程重复写入。修改配置或修复启动检查问题后
-需要重启命令。
+## 官方参考
 
-### 月末边界
-
-月末当天仍是当前业务日。例如本机时间 9 月 30 日 23:00 的数据只是截至 23:00 的累计
-值，仍输出到 Prometheus；指定 `--push-influxdb` 时也会按采集时刻写入 InfluxDB。因为
-上游只返回当前月份数据，跨月后不能补采 9 月 30 日，因此该日最后一条记录只代表采集
-任务最后一次取得的累计值，不声称是绝对最终结算值。2 月 28/29 日、大小月及跨年均
-遵循同一规则；月度结算若未来需要，应另建语义。
+- [TinyFish CLI](https://docs.tinyfish.ai/cli/commands)
+- [Firecrawl credit-usage 实现](https://github.com/firecrawl/cli/blob/main/src/commands/credit-usage.ts)
+- [Parallel CLI 实现](https://github.com/parallel-web/parallel-web-tools/blob/main/parallel_web_tools/cli/commands.py)

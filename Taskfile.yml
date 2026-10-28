@@ -19,11 +19,11 @@ tasks:
     cmds:
       - docker rm -f "{{.CONTAINER}}" || true
       - docker create --rm -it --name "{{.CONTAINER}}" --entrypoint /bin/bash {{.IMAGE}}
-      - cmd: 'docker cp "{{env "HOME"}}/.config/kazu/config.toml" "{{.CONTAINER}}:/root/.config/kazu/config.toml"'
+      - cmd: 'docker cp "{{env "HOME"}}/.config/kazu/." "{{.CONTAINER}}:/root/.config/kazu/"'
         platforms: [linux]
-      - cmd: 'docker cp "{{env "HOME"}}/Library/Application Support/kazu/config.toml" "{{.CONTAINER}}:/root/.config/kazu/config.toml"'
+      - cmd: 'docker cp "{{env "HOME"}}/Library/Application Support/kazu/." "{{.CONTAINER}}:/root/.config/kazu/"'
         platforms: [darwin]
-      - cmd: 'docker cp "{{env "LOCALAPPDATA"}}\KokomiNetwork\kazu\config.toml" "{{.CONTAINER}}:/root/.config/kazu/config.toml"'
+      - cmd: 'docker cp "{{env "LOCALAPPDATA"}}/KokomiNetwork/kazu/." "{{.CONTAINER}}:/root/.config/kazu/"'
         platforms: [windows]
 
   test:

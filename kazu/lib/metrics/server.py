@@ -10,8 +10,6 @@ from urllib.parse import urlsplit
 
 from prometheus_client import CONTENT_TYPE_LATEST
 
-from kazu.lib.metrics.exporter import MetricsUnavailable
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -66,9 +64,6 @@ class MetricsRequestHandler(BaseHTTPRequestHandler):
             return
         try:
             body = cast(MetricsHTTPServer, self.server).render()
-        except MetricsUnavailable as exc:
-            self._respond(HTTPStatus.SERVICE_UNAVAILABLE, f"{exc}\n".encode())
-            return
         except Exception as exc:
             _LOGGER.error("Unexpected metrics collection failure (%s).", type(exc).__name__)
             self._respond(HTTPStatus.INTERNAL_SERVER_ERROR, b"Metrics collection failed.\n")

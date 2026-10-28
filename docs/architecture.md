@@ -1,85 +1,41 @@
 # 代码组织
 
-`kazu/cli.py` 保留应用入口和顶层 parser；具体命令不再由数据源注册。
+- `cli.py`：命令入口；`clicmds/*_cli.py` 注册 Metrics、Status、SSP 命令。
+- `config.py`：合并内置默认值与 TOML，读取同目录 `.env`，环境变量优先。
+- `lib/usage.py`：不可变 `Measurement`、`UsageSnapshot` 和 `UsageSource` 协议。
+- `sources/search.py`：官方 CLI 调用和 JSON 映射；CLI 优先、API 次之的选择逻辑。
+- `sources/registry.py`：来源装配与 SSP 快照适配。
+- `sources/ssp.py`、`lib/sspgateway/`：SSP 网关访问与流量规范化。
+- `lib/metrics/watch.py`：每个来源一个后台线程，负责定时查询、缓存和空闲暂停。
+- `lib/metrics/exporter.py`：Prometheus Collector，只读取缓存并发送唤醒信号。
+- `lib/metrics/server.py`：提供 `GET /metrics` 的 HTTP 服务。
+- `lib/metrics/traffic.py`：SSP 流量快照转换为原有每日 Counter。
 
-```text
-kazu/
-├── cli.py                     # 应用入口
-├── clicmds/
-│   ├── base.py                # CLICommand 注册约定
-│   ├── ssp_cli.py             # SSPCommand：参数、命令执行与服务装配
-│   ├── ssp_display.py         # SSPConsole：表格、日志与 trace 展示
-│   └── documentation.py       # CLIDocumentation、通用 DocumentationAction
-├── sources/
-│   └── ssp.py                 # SSPSource、统一采集与每日流量规范化
-├── lib/
-│   ├── traffic.py               # 通用订阅流量模型、快照和 SubscriptionTrafficSource 协议
-│   ├── metrics/
-│   │   ├── traffic.py           # SubscriptionTrafficMetrics：流量 Counter collector
-│   │   ├── exporter.py        # SubscriptionTrafficExporter：每次 scrape 的采集协调
-│   │   └── server.py          # MetricsHTTPServer：HTTP 路由与响应
-│   ├── influxdb3/
-│   │   ├── client.py          # InfluxDB3Client：配置、查询检查与 HTTP API
-│   │   ├── traffic.py           # 订阅流量编解码和 InfluxDB3SubscriptionTrafficWriter
-│   │   └── reporter.py        # InfluxDB3Reporter：显式启用、降级与日志
-│   └── sspgateway/
-│       ├── client.py          # SSPGateway：只读 API 与网关传输
-│       ├── codec.py           # GatewayCodec：规范化、签名、加解密
-│       ├── bootstrap.py       # load_bootstrap：公开内置配置及解码
-│       ├── models.py          # 网关响应和 SSP 原始数据模型
-│       ├── traffic.py         # parse_traffic_log：流量响应解析
-│       ├── trace.py           # 请求/响应的脱敏格式化函数
-│       └── errors.py          # 网关异常类型
-└── config.py                  # 配置模型与文件加载
-```
+## 数据与并发边界
 
-## 依赖边界
+来源通过 `collect()` 返回统一快照，不依赖终端渲染或 Prometheus 注册表。
+搜索用量是 Gauge，SSP 日累计流量保留 Counter 语义。
+来源之间并行，同一来源只由自己的 worker 串行查询。外部命令使用参数列表执行、
+关闭 stdin、设置超时，不启动交互认证，不把原始 stdout/stderr 写入日志。
 
-- `clicmds` 负责 argparse、Rich 展示以及对象的生命周期装配，不实现采集协议或存储格式；命令模块统一以
-  `_cli.py` 结尾并由包发现逻辑加载。
-- 指标实现统一位于 `lib/metrics/` 包，不再保留同名的 `lib/metrics.py` 模块。
-- `sources` 通过 `collect()` 产出 `SubscriptionTrafficSnapshot`；不依赖 CLI、Prometheus 或 InfluxDB。
-- `SubscriptionTrafficMetrics` 保存最新订阅流量快照，并在采集时生成 Counter；`MetricsHTTPServer` 不认识 SSP 或数据库。
-- `SubscriptionTrafficExporter` 调用装配时传入的采集函数，通过可选回调通知上报方，不绑定 InfluxDB。
-- `InfluxDB3Client` 处理 HTTP API；流量表语义属于 writer/codec，上报启用和失败降级属于 reporter。
-- `sspgateway` 的脱敏与终端渲染分离；包入口导出 `SSPGateway`、模型、异常和 bootstrap 常量。
-- `SSPGateway` 持有 HTTP 客户端及请求配置，`GatewayCodec` 持有认证信息和会话密钥，因此
-  使用类管理状态。bootstrap 加载、流量解析和 trace 格式化使用模块函数；不依赖实例的
-  校验、编码等辅助函数作为对应模块的私有函数，不额外套一层工具类。
-- `normalize_subscription_traffic_usage`、InfluxDB 流量编解码，以及 CLI 参数校验和格式化
-  均为各自模块中的普通函数；固定的表名、指标定义和 label 名称使用模块常量。
-- `CLICommand.create_all` 使用类级命令注册表，保留为类方法；持有客户端、控制台、
-  并发锁或其他实例状态的对象继续使用类管理其职责。
+Watch 的缓存、空闲计数、暂停和停止标志由同一 Condition 保护；上游 I/O 在锁外执行。
+Collect 在锁内复制视图并清零计数，暂停时清除快照。唤醒前先取得无业务数据的视图，
+因此即使 worker 立即完成，唤醒它的那次响应也不会意外包含该来源的新指标。
 
-## 一次采集的生命周期
+Collector 每次按快照生成指标族，没有长期存活的 Gauge 标签缓存，避免旧标签残留。
+注册 Collector 时 `describe()` 不会触发真实 Collect。HTTP 端口绑定成功后才启动 worker。
+停止时发出通知；执行中的 CLI/HTTP 操作由自己的超时约束，资源在 worker 退出时关闭。
 
-`GET /metrics` → `SubscriptionTrafficExporter` → `SSPSource.collect()` → `SubscriptionTrafficSnapshot`。
-`ssp get` 同样调用 `SSPSource.collect()`，展示层从快照读取数据；采集与规范化只有一个入口。
-有效快照非阻塞地交给可选的 InfluxDB reporter 后台队列；当天数据用于更新
-`SubscriptionTrafficMetrics` 中的 Counter。采集过程串行，重叠请求返回 503；上报网络
-请求只在 worker 中执行，错误由 reporter 记录，不中断指标生成。停止服务时 reporter
-停止接收新快照，排空最多一个待处理快照，并在有界期限内等待 worker 后释放资源。
+Status 使用独立线程池执行一次性查询，复用同一来源装配与快照，不读写 Exporter 状态。
 
-服务装配时创建一个独立 `CollectorRegistry` 和耗时 Gauge，通过
-`@scrape_duration.time()` 装饰调用 `source.collect()` 的采集函数，再传入 `SubscriptionTrafficExporter`。
-registry 和流量 collector 在服务实例生命周期内复用；计时只覆盖抓取与规范化，不包含 InfluxDB 上报。
-耗时和流量独立注册，最后由 `generate_latest(registry)` 合并到同一次 HTTP 响应。
-`SubscriptionTrafficSnapshot` 不携带耗时，因此 InfluxDB 不会保存该指标。
+## 扩展 API 来源
 
-每次请求在同一把锁内采集、更新并生成响应；`SubscriptionTrafficMetrics.update()` 替换完整快照，
-collector 只基于当前快照生成 Counter，避免标签残留和
-半更新的响应。失败请求仍返回 503，不输出旧快照。独立 registry 不使用全局 `REGISTRY`，
-因此不输出默认的 Process、GC 和 Platform 指标。
+在 `sources/search.py` 的 `API_COLLECTORS` 中加入 provider 对应的查询函数，签名为
+`SourceConfig -> UsageSnapshot`。配置已从 `.env` 注入 `api_key`，禁止从 TOML 读取凭据。
+`auto` 首先尝试 CLI；CLI 不可用时调用已注册的 API 适配器。显式 `cli` 或 `api` 则只用
+指定来源。来源特有的非敏感配置随适配器一起增加，不提前引入空的服务层或认证框架。
 
-业务日期与写入时间均来自同一快照的采集时刻，使用本机时区；配置在启动时加载，
-不在每个 scrape 中重载。新增数据源可实现 `SubscriptionTrafficSource` 协议，新增命令放在
-`clicmds` 下并继承 `CLICommand`，两者不需要共享继承体系。
+## 文档打包
 
-## 文档资源与打包
-
-`docs/` 是文档的唯一编辑源。Hatch 的 wheel `force-include` 配置将其打包到
-`kazu/_docs/`，`CLIDocumentation` 优先通过 `importlib.resources` 读取包内文档；
-源码/可编辑安装未包含该资源时，回退到仓库 `docs/cli/`。
-命令通过 `DocumentationAction(command=...)` 注册 `--docs`，由通用 Action 负责展示与退出。
-Docker 构建阶段复制 `docs/` 供 wheel 打包，运行阶段仅保留安装后的虚拟环境，不需要
-保留构建目录或挂载仓库。
+`docs/` 是唯一文档源。wheel 将其打包到 `kazu/_docs`；命令的 `--docs` 由
+`CLIDocumentation` 展示包内文档，源码安装读取 `docs/cli/`。

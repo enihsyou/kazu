@@ -16,7 +16,6 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from kazu.config import get_config_path
 from kazu.lib.sspgateway import GatewayTrace
 from kazu.lib.traffic import SubscriptionTrafficSnapshot, SubscriptionTrafficUsage
 
@@ -60,7 +59,8 @@ class SSPConsole:
         """Display guidance for configuring the missing SSP authorization."""
         self.error("SSP Authorization is required.")
         self.console.print(
-            f"Pass --authorization or set sources.ssp.authorization in {get_config_path()}. "
+            "Pass --authorization or set SSP_AUTHORIZATION in the environment or the .env "
+            "beside config.toml. "
             "Use a complete value such as Bearer <credential>.",
             markup=False,
         )

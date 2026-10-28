@@ -1,167 +1,42 @@
-# `kazu ssp`
+# SSP 命令
 
-读取少数派的流量使用情况。
-
-## 用法
+SSP 通过加密网关读取订阅流量，保留终端查询及实时刷新能力：
 
 ```bash
-uv run kazu ssp --help
-uv run kazu ssp --docs
 uv run kazu ssp get
 uv run kazu ssp get --detail
 uv run kazu ssp get --watch 5
-uv run kazu ssp get --detail --watch 5
-uv run kazu ssp get --authorization "Bearer <credential>"
-uv run kazu ssp metrics
-uv run kazu ssp metrics --host 0.0.0.0 --port 9101
-uv run kazu ssp metrics --push-influxdb
+uv run kazu ssp --config ./config.toml get
 ```
 
-`--docs` 从安装包内的 Markdown 资源读取文档；源码/可编辑安装未包含资源时使用仓库文档。
-Docker 中可直接运行 `docker run --rm kazu:latest ssp --docs`，无需挂载源码。
+`get` 可用参数：
 
-容器运行指标服务时，需要配置 SSP Authorization，并显式提供子命令和监听地址：
+- `--detail`：完整显示字节数。
+- `--watch INTERVAL`：按秒刷新终端表格，与 Exporter 的后台抓取配置独立。
+- `--authorization`：覆盖 `SSP_AUTHORIZATION`。
+- `--timeout`：覆盖配置中的请求超时。
+- `--verbose`：显示脱敏后的 HTTP 请求与响应。
 
-```bash
-docker run --rm -p 127.0.0.1:9101:9101 \
-  -v kazu-config:/root/.config/kazu \
-  kazu:latest ssp metrics --host 0.0.0.0 --port 9101
+将完整认证值放进配置文件同目录的 `.env`，或进程环境变量：
+
+```dotenv
+SSP_AUTHORIZATION="Bearer <credential>"
 ```
 
-## `get` 子命令
-
-`kazu ssp get` 与 `metrics` 共用 `SSPSource.collect()` 获取并规范化流量数据，
-终端表格展示同一份快照中的业务日期、流量和倍率。
-
-请求选项：
-
-- `--authorization`：完整的 `Bearer <credential>` 文本，覆盖配置文件。
-- `--timeout`：请求超时秒数。
-- `--verbose`：显示已脱敏的 HTTP 请求与响应。
-- `--detail`：按完整字节数显示流量，例如 `123,456,789 B`；默认使用较短的可读单位。
-- `--watch INTERVAL`：每隔指定秒数重新查询并原位刷新表格。第二次查询起，上传、下载和
-  扣除总量会在累计值后显示相对上一轮的非零变化，例如 `Δ123 B`。当天变化显示为绿色，
-  历史日期变化显示为红色；汇总中的 `last_data_at` 保留最近一次检测到数据变化的时间。
-  按 Ctrl+C 停止。
-
-## `metrics` 子命令
-
-`kazu ssp metrics` 启动常驻 HTTP 服务，默认地址为
-`http://127.0.0.1:9101/metrics`，按 Ctrl+C 停止。每次 `GET /metrics` 才请求 SSP，
-由 `prometheus-client` 构造指标并生成 Prometheus exposition 响应。
-
-实际观测表明，上游流量数据不是实时更新：新的流量变化通常约 5 秒后才能查询到，刷新
-间隔并不固定。跨天后的当天记录也不会立即出现，因此刚过零点的查询可能仍只返回前一
-业务日的数据；在上游返回当天记录前，指标响应不会包含三个流量 Counter，以免将过时的
-历史累计值作为当天数据上报。
-
-推荐让 Grafana Alloy 的 `prometheus.scrape` 直接拉取 `/metrics`，不使用 textfile
-collector、Pushgateway 或定时重复启动命令。详见[采集配置示例](../metrics.md#推荐使用-grafana-alloy-采集)。
-
-默认不连接 InfluxDB。增加 `--push-influxdb` 后，启动时查询一次目标 measurement 是否
-存在，以检查配置和数据库查询权限；通过后，每次成功采集的数据都会非阻塞地交给后台
-线程尝试写入 InfluxDB 3：当日按采集时刻追加，历史业务日固定写到该日最后一秒。没有
-scrape 就不会产生采集或上报。
-
-选项：
-
-- `--host`：监听地址，默认 `127.0.0.1`。容器内或远程 Alloy 采集时可使用 `0.0.0.0`。
-- `--port`：监听端口，默认 `9101`，范围为 `1`–`65535`。
-- `--push-influxdb`：通过启动检查后启用 InfluxDB 3 上报；未指定时不连接 InfluxDB。
-- `--authorization`：完整的 `Bearer <credential>` 文本，覆盖配置文件。
-- `--timeout`：请求超时秒数。
-- `--verbose`：显示已脱敏的 HTTP 请求与响应。
-
-三个流量 Counter 名称为：
-
-```text
-kazu_subscription_traffic_upload_bytes_total
-kazu_subscription_traffic_download_bytes_total
-kazu_subscription_traffic_deducted_bytes_total
-```
-
-三个值都是当前业务日截至本次查询时刻的累计总量（today total），在日内随使用量递增，
-进入下一业务日后随上游重置。它们不是每个采集间隔内的增量。查询当前累计量
-应取窗口内最后一个有效样本，不能把时间轴上的样本相加；每日累计量取该业务日最后一个
-有效样本，每小时消耗量则由该小时首尾累计值之差计算，并处理跨日重置。忽略
-`user_id` 与 `server_rate` 时，先用 `sum` 合并每个时刻的标签序列，再对聚合后的序列
-使用 `last_over_time` 取最后一个有效样本；`sum` 不用于累加时间轴上的采集样本。
-PromQL 应使用 `last_over_time((sum(metric{...}))[窗口:10s])` 形式的子查询。展示合计、
-总消耗或实际扣除流量时直接查询 `kazu_subscription_traffic_deducted_bytes_total`，不要用上传与
-下载相加代替，因为扣除流量已经应用了 `server_rate`。
-
-另外输出无 label 的抓取耗时 Gauge：
-
-```text
-kazu_subscription_traffic_scrape_duration_seconds
-```
-
-其值为本次从 SSP 抓取并规范化流量所用的秒数，不包含 InfluxDB 上报耗时，
-与流量指标在同一次 Prometheus 响应中输出，不写入 InfluxDB。
-
-三个流量指标都有 `provider="ssp"`、`user_id` 和 `server_rate` 三个 label；抓取耗时指标不带 label。`date`、
-`record_at` 和查询时间都不是 label。当前日数据缺失时，本次响应不包含三个流量 Counter，
-避免跨日后继续暴露昨天的累计值；抓取耗时 Gauge 仍正常返回。上游请求失败或采集请求
-重叠时，`/metrics` 返回 HTTP 503。下一次 scrape 会重新尝试。
-其他路径返回 HTTP 404。启动和上报状态通过 stderr 中的 INFO/WARNING/ERROR 日志显示。
-
-监听地址没有内置认证或 TLS；不要直接暴露到公网。
-
-## Authorization
-
-Authorization 必须是完整的 `Bearer <credential>` 文本。
-
-令牌来源是登录后的 Local Storage `VUE_NAIVE_ACCESS_TOKEN` 键。
-
-登录少数派后，在该站点页面的浏览器开发者工具 Console 中运行下面的 JavaScript；它会将正确格式的值复制到剪贴板：
-
-```js
-const token = localStorage.getItem("VUE_NAIVE_ACCESS_TOKEN");
-if (!token) throw new Error("VUE_NAIVE_ACCESS_TOKEN is not available");
-copy(`Bearer ${token}`);
-```
-
-可以临时传入命令行，或保存到用户配置文件：
+可省略的公共配置：
 
 ```toml
 [sources.ssp]
-authorization = "Bearer <credential>"
+enabled = true
+source = "auto"
+interval = 120
+idle_poll_limit = 5
+timeout = 30
+api_base_url = "https://s1.thefew01.top/api/v1"
+gateway_base_url = "https://x1.thecores.top"
 ```
 
-InfluxDB 3 的连接信息位于顶层 `[influxdb3]`：
-
-```toml
-[influxdb3]
-host = "https://influxdb.example.com"
-database = "kazu"
-token = "<query-and-write-token>"****
-timeout = 15.0
-```
-
-`host`、`database`、`token` 必填；目标数据库须已存在，token 需要该库的查询与写入权限。令牌应保存在本机用户配置中，不要提交到仓库。
-
-启动行为：
-
-- 未传 `--push-influxdb`：INFO 提示未启用上报，不访问 InfluxDB。
-- 已传参数：使用配置中的 database/token 调用 `/api/v3/query_sql` 查询一次
-  `information_schema.tables`。成功时 INFO 提示将由后台线程上报。
-- 配置不完整或检查失败：WARNING 提示不会上报，但 `/metrics` 服务继续运行；修复配置
-  后需要重启命令。启动检查不创建数据库，也不写入探测点。
-- 后续写入失败：记录 ERROR，本次指标响应不因该错误变为失败；失败的历史最终值不会
-  记入内存，下次采集可再次尝试上报。
-
-`/ping` 只能检查服务状态，不能证明指定数据库和写入权限有效。这里的 SQL 检查验证
-数据库查询是否可用，写入权限仍由实际写入确认。
-
-InfluxDB 上报队列只保留一个待处理快照。数据库写入较慢时，新快照会替换尚未开始处理的
-旧快照，`/metrics` 不等待数据库网络请求。历史最终值只与当前进程内成功写入后保存的
-内存记录比较；进程重启不会查询数据库恢复该记录。
-
-## 内置加密配置来源
-
-`BOOTSTRAP_MASTER_KEY` 取自首页加载的 `sec.js`。脚本中的 32 位小写字母数字字符串可用
-`:'\\b[a-z0-9]{32}\\b',` 的等价模式定位。
-
-`SECURE_SETTING` 取自 `https://s1.thefew01.top/` 响应中的
-`<meta name="secure-setting" content="...">`，无需登录。首页同时提供 `sec.js` 的链接。
-`tests/test_ssp_bootstrap.py` 会在网络可用时请求这两个公开资源，并验证它们仍与内置常量一致。
+`enabled` 控制统一 Metrics 与 Status 是否查询 SSP；显式执行 `ssp get` 总会查询。
+通过 `uv run kazu metrics` 将 SSP 与其他来源一起暴露给 Prometheus。
+SSP 的 `auto` 和 `api` 都使用内置 API；`cli` 不适用。
+流量按本机时区解释业务日，上传、下载和按倍率折算的扣费流量共用同一份规范化快照。

@@ -12,7 +12,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the command-line argument parser for kazu."""
     parser = argparse.ArgumentParser(
         prog=APP_NAME,
-        description="Collect structured usage statistics from configured sources",
+        description="Export account usage and balances from configured sources",
     )
 
     subparsers = parser.add_subparsers(title="commands")
@@ -33,7 +33,10 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SUCCESS
 
     args = parser.parse_args(arg_list)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (OSError, ValueError, TypeError) as exc:
+        parser.exit(1, f"{exc}\n")
 
 
 if __name__ == "__main__":

@@ -1,19 +1,32 @@
-[influxdb3]
-# InfluxDB 3 endpoint, e.g. https://influxdb.example.com
-host = ""
-# Destination database
-database = ""
-# Token with query and write access to the database; checked with SELECT 1 on startup.
-token = ""
-# Query and write timeout in seconds.
-timeout = 15.0
+# All fields are optional. Credentials belong in the adjacent .env file.
+[metrics]
+# HTTP listen address.
+host = "127.0.0.1"
+# HTTP listen port for GET /metrics.
+port = 9101
 
+# Sources are disabled by default. Shared defaults: source="auto" (CLI, then API),
+# interval=120 seconds, timeout=30 seconds, idle_poll_limit=5 unconsumed polls.
 [sources.ssp]
-# Complete HTTP Authorization value; use the Bearer scheme and a non-empty credential.
-authorization = ""
+enabled = false
 # Gateway base URL where encrypted messages are sent.
 gateway_base_url = "https://x1.thecores.top"
-# Base URL of the SSP API, used for API requests wrapped in gateway message.
+# Base URL of the SSP API, used for API requests wrapped in gateway messages.
 api_base_url = "https://s1.thefew01.top/api/v1"
 # Request timeout in seconds.
-timeout = 15.0
+timeout = 30.0
+
+[sources.exa]
+enabled = false
+
+[sources.tinyfish]
+enabled = false
+
+[sources.tavily]
+enabled = false
+
+[sources.firecrawl]
+enabled = false
+
+[sources.parallel]
+enabled = false
