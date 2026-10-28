@@ -9,7 +9,15 @@ from collections.abc import Callable
 from typing import Any
 
 from kazu.config import SourceConfig
-from kazu.lib.usage import CollectionError, Measurement, UsageSnapshot
+from kazu.lib.measurements import (
+    CALLS_USED,
+    CREDITS_CAP,
+    CREDITS_REMAINING,
+    MONEY_PENDING_DEBIT,
+    MONEY_REMAINING,
+    SOURCE_POSTPAID,
+)
+from kazu.lib.usage import CollectionError, UsageSnapshot
 
 
 def _run_json(command: str, args: list[str], timeout: float) -> dict[str, Any]:
@@ -46,26 +54,14 @@ def _tinyfish(command: str, timeout: float) -> UsageSnapshot:
         try:
             if query == "wallet":
                 data = _run_json(command, ["wallet", "status"], timeout)
-                if data["currency"] != "USD":
-                    raise CollectionError("Wallet currency is not USD")
                 measurements.append(
-                    Measurement(
-                        "kazu_search_money_usd",
-                        "Account monetary amounts in USD, by kind and scope.",
-                        float(data["available_balance"]),
-                        (("kind", "remaining"), ("scope", "account")),
+                    MONEY_REMAINING.create(
+                        float(data["available_balance"]), currency=data["currency"], scope="account"
                     )
                 )
             else:
                 data = _run_json(command, ["search", "usage", "--limit", "1"], timeout)
-                measurements.append(
-                    Measurement(
-                        "kazu_search_calls",
-                        "Search request counts, by kind and scope.",
-                        float(data["total"]),
-                        (("kind", "used"), ("scope", "all_time")),
-                    )
-                )
+                measurements.append(CALLS_USED.create(float(data["total"]), scope="all_time"))
         except (CollectionError, KeyError, TypeError, ValueError) as exc:
             detail = str(exc) if isinstance(exc, CollectionError) else "Unexpected JSON schema"
             warnings.append(f"{query}: {detail}")
@@ -79,53 +75,29 @@ def _firecrawl(command: str, timeout: float) -> UsageSnapshot:
     if not result["success"]:
         raise CollectionError("Firecrawl credit query failed")
     data = result["data"]
-    measurements = [
-        Measurement(
-            "kazu_search_credits",
-            "Account credits, by kind and scope.",
-            float(data["remainingCredits"]),
-            (("kind", "remaining"), ("scope", "account")),
-        )
-    ]
+    measurements = [CREDITS_REMAINING.create(float(data["remainingCredits"]), scope="account")]
     if data["planCredits"] > 0:
-        measurements.append(
-            Measurement(
-                "kazu_search_credits",
-                "Account credits, by kind and scope.",
-                float(data["planCredits"]),
-                (("kind", "cap"), ("scope", "plan")),
-            )
-        )
+        measurements.append(CREDITS_CAP.create(float(data["planCredits"]), scope="plan"))
     # Remaining credits may include top-ups; their difference is not a reliable usage value.
     return UsageSnapshot(tuple(measurements))
 
 
 def _parallel(command: str, timeout: float) -> UsageSnapshot:
     data = _run_json(command, ["balance", "--json", "get"], timeout)
-    measurements = [
-        Measurement(
-            "kazu_source_postpaid",
-            "Whether the organization is billed by invoice.",
-            float(data["will_invoice"]),
-        )
-    ]
+    measurements = [SOURCE_POSTPAID.create(float(data["will_invoice"]))]
     # The API always returns zero balances for postpaid accounts; those are not quotas.
     if not data["will_invoice"]:
         measurements.append(
-            Measurement(
-                "kazu_search_money_usd",
-                "Account monetary amounts in USD, by kind and scope.",
-                float(data["credit_balance_cents"]) / 100,
-                (("kind", "remaining"), ("scope", "account")),
+            MONEY_REMAINING.create(
+                float(data["credit_balance_cents"]) / 100, currency="USD", scope="account"
             )
         )
         if data.get("pending_debit_balance_cents") is not None:
             measurements.append(
-                Measurement(
-                    "kazu_search_money_usd",
-                    "Account monetary amounts in USD, by kind and scope.",
+                MONEY_PENDING_DEBIT.create(
                     float(data["pending_debit_balance_cents"]) / 100,
-                    (("kind", "pending_debit"), ("scope", "account")),
+                    currency="USD",
+                    scope="account",
                 )
             )
     return UsageSnapshot(tuple(measurements))

@@ -92,23 +92,26 @@ SSP_AUTHORIZATION="Bearer <credential>"
 - `kazu_source_last_success_timestamp_seconds{provider}`：最近一次获得有效数据的 Unix 时间，尚无数据时为 0。
 - `kazu_source_query_duration_seconds{provider}`：最近一次查询耗时。
 
-搜索账户数据按单位统一为三个 Gauge 家族，均带 `provider`、`kind`、`scope` 标签：
+搜索账户数据分为金额、credits、次数三类 Gauge。剩余、已用、限额等语义放在指标名中，
+服务名使用 `provider` 标签，统计范围使用 `scope` 标签：
 
-| 指标 | 单位 | 当前支持的 kind |
+| 指标 | 单位 | 含义 |
 | --- | --- | --- |
-| `kazu_search_money_usd` | 美元 | `remaining`（可用余额）、`pending_debit`（待扣金额） |
-| `kazu_search_credits` | credits | `remaining`（账户剩余）、`cap`（套餐额度） |
-| `kazu_search_calls` | 调用次数 | `used`（已调用次数） |
+| `kazu_search_money_remaining` | 金额 | 可用余额，币种由 `currency` 标签指定 |
+| `kazu_search_money_pending_debit` | 金额 | 待扣金额，币种由 `currency` 标签指定 |
+| `kazu_search_credits_remaining` | credits | 账户剩余 |
+| `kazu_search_credits_cap` | credits | 套餐额度 |
+| `kazu_search_calls_used` | 调用次数 | 已调用次数 |
 
 `scope` 表示数据范围：`account` 为账户、`plan` 为套餐账期、`all_time` 为全部历史。
 待扣金额不等于累计消费；账户剩余 credits 和套餐 cap 的范围不同，不能直接相减。
 例如：
 
 ```prometheus
-kazu_search_money_usd{provider="tinyfish",kind="remaining",scope="account"} 21.44
-kazu_search_credits{provider="firecrawl",kind="remaining",scope="account"} 1000
-kazu_search_credits{provider="firecrawl",kind="cap",scope="plan"} 500000
-kazu_search_calls{provider="tinyfish",kind="used",scope="all_time"} 42
+kazu_search_money_remaining{provider="tinyfish",currency="USD",scope="account"} 21.44
+kazu_search_credits_remaining{provider="firecrawl",scope="account"} 1000
+kazu_search_credits_cap{provider="firecrawl",scope="plan"} 500000
+kazu_search_calls_used{provider="tinyfish",scope="all_time"} 42
 ```
 
 后付费标志属于诊断信息，单独使用 `kazu_source_postpaid{provider}`，不混入金额指标。

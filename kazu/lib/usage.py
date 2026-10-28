@@ -17,7 +17,7 @@ class Measurement:
     help: str
     value: float
     labels: tuple[tuple[str, str], ...] = ()
-    kind: str = "gauge"
+    metric_type: str = "gauge"
 
 
 @dataclass(frozen=True)

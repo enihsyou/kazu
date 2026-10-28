@@ -7,8 +7,13 @@ from collections.abc import Iterator
 from prometheus_client import CollectorRegistry, generate_latest
 from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily, Metric
 
+from kazu.lib.measurements import (
+    SOURCE_LAST_SUCCESS,
+    SOURCE_QUERY_DURATION,
+    SOURCE_UP,
+    SOURCE_WATCHING,
+)
 from kazu.lib.metrics.watch import SourceWatch
-from kazu.lib.usage import Measurement
 
 
 class MetricsExporter:
@@ -26,33 +31,17 @@ class MetricsExporter:
         for provider, watch in self.watches.items():
             view = watch.consume()
             values = [
-                Measurement(
-                    "kazu_source_up",
-                    "Whether the latest query fully succeeded.",
-                    float(view.success),
-                ),
-                Measurement(
-                    "kazu_source_watching",
-                    "Whether background polling is active.",
-                    float(view.watching),
-                ),
-                Measurement(
-                    "kazu_source_last_success_timestamp_seconds",
-                    "Unix timestamp of the last successful query.",
-                    view.last_success,
-                ),
-                Measurement(
-                    "kazu_source_query_duration_seconds",
-                    "Duration of the latest query.",
-                    view.duration,
-                ),
+                SOURCE_UP.create(float(view.success)),
+                SOURCE_WATCHING.create(float(view.watching)),
+                SOURCE_LAST_SUCCESS.create(view.last_success),
+                SOURCE_QUERY_DURATION.create(view.duration),
             ]
             if view.snapshot is not None:
                 values.extend(view.snapshot.measurements)
             for value in values:
                 if value.name not in families:
                     metric_type = (
-                        CounterMetricFamily if value.kind == "counter" else GaugeMetricFamily
+                        CounterMetricFamily if value.metric_type == "counter" else GaugeMetricFamily
                     )
                     families[value.name] = metric_type(
                         value.name, value.help, labels=["provider", *[k for k, _ in value.labels]]

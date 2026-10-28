@@ -3,6 +3,7 @@
 - `cli.py`：命令入口；`clicmds/*_cli.py` 注册 Metrics、Status、SSP 命令。
 - `config.py`：合并内置默认值与 TOML，读取同目录 `.env`，环境变量优先。
 - `lib/usage.py`：不可变 `Measurement`、`UsageSnapshot` 和 `UsageSource` 协议。
+- `lib/measurements.py`：集中定义指标名称、说明和类型，通过 `MetricDefinition.create()` 创建测量值。
 - `sources/search.py`：官方 CLI 调用和 JSON 映射；CLI 优先、API 次之的选择逻辑。
 - `sources/registry.py`：来源装配与 SSP 快照适配。
 - `sources/ssp.py`、`lib/sspgateway/`：SSP 网关访问与流量规范化。
@@ -15,6 +16,8 @@
 
 来源通过 `collect()` 返回统一快照，不依赖终端渲染或 Prometheus 注册表。
 搜索用量是 Gauge，SSP 日累计流量保留 Counter 语义。
+数据源与 Exporter 只引用指标定义并传入值和标签，不自行拼写名称和说明；Exporter
+统一添加 `provider` 标签，剩余、已用、限额等含义在指标名中区分。
 来源之间并行，同一来源只由自己的 worker 串行查询。外部命令使用参数列表执行、
 关闭 stdin、设置超时，不启动交互认证，不把原始 stdout/stderr 写入日志。
 

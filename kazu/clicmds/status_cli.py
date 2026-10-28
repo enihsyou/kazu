@@ -18,6 +18,13 @@ from kazu.clicmds.base import CLICommand
 from kazu.clicmds.documentation import DocumentationAction
 from kazu.config import AppConfig, SourceConfig, load_config
 from kazu.exitcodes import EXIT_FAILURE, EXIT_SUCCESS
+from kazu.lib.measurements import (
+    CALLS_USED,
+    CREDITS_CAP,
+    CREDITS_REMAINING,
+    MONEY_PENDING_DEBIT,
+    MONEY_REMAINING,
+)
 from kazu.lib.usage import CollectionError
 from kazu.sources.registry import create_source, source_configs
 
@@ -88,9 +95,11 @@ class StatusCommand(
                 "disabled": "dim",
             }
             categories = {
-                "kazu_search_money_usd": ("Money (USD)", "green"),
-                "kazu_search_credits": ("Credits", "magenta"),
-                "kazu_search_calls": ("Calls", "cyan"),
+                MONEY_REMAINING.name: ("Money remaining", "green"),
+                MONEY_PENDING_DEBIT.name: ("Money pending debit", "green"),
+                CREDITS_REMAINING.name: ("Credits remaining", "magenta"),
+                CREDITS_CAP.name: ("Credits cap", "magenta"),
+                CALLS_USED.name: ("Calls used", "cyan"),
             }
             for result in results:
                 values = Text()
