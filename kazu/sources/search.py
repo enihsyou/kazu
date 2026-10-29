@@ -13,12 +13,10 @@ from kazu.lib.measurements import (
     CALLS_USED,
     CREDITS_CAP,
     CREDITS_REMAINING,
-    MONEY_PENDING_DEBIT,
     MONEY_REMAINING,
-    SOURCE_POSTPAID,
 )
 from kazu.lib.usage import CollectionError, UsageSnapshot
-from kazu.sources import exa_api, firecrawl_api, tavily_api, tinyfish_api
+from kazu.sources import firecrawl_api, tavily_api, tinyfish_api
 
 
 def _run_json(command: str, args: list[str], timeout: float) -> dict[str, Any]:
@@ -85,23 +83,13 @@ def _firecrawl(command: str, timeout: float) -> UsageSnapshot:
 
 def _parallel(command: str, timeout: float) -> UsageSnapshot:
     data = _run_json(command, ["balance", "--json", "get"], timeout)
-    measurements = [SOURCE_POSTPAID.create(float(data["will_invoice"]))]
-    # The API always returns zero balances for postpaid accounts; those are not quotas.
-    if not data["will_invoice"]:
-        measurements.append(
+    return UsageSnapshot(
+        (
             MONEY_REMAINING.create(
                 float(data["credit_balance_cents"]) / 100, currency="USD", scope="account"
-            )
+            ),
         )
-        if data.get("pending_debit_balance_cents") is not None:
-            measurements.append(
-                MONEY_PENDING_DEBIT.create(
-                    float(data["pending_debit_balance_cents"]) / 100,
-                    currency="USD",
-                    scope="account",
-                )
-            )
-    return UsageSnapshot(tuple(measurements))
+    )
 
 
 CLI_COLLECTORS = {
@@ -110,7 +98,6 @@ CLI_COLLECTORS = {
     "parallel": ("parallel-cli", _parallel),
 }
 API_COLLECTORS: dict[str, Callable[[SourceConfig], UsageSnapshot]] = {
-    "exa": exa_api.collect,
     "tinyfish": tinyfish_api.collect,
     "tavily": tavily_api.collect,
     "firecrawl": firecrawl_api.collect,

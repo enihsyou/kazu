@@ -18,15 +18,23 @@ Prometheus Collect 读取不可变快照，不等待 CLI 或上游 HTTP 请求�
 host = "127.0.0.1"
 port = 9101
 
-[sources.tinyfish]
-enabled = true
+[sources]
 source = "auto"
 interval = 120
+timeout = 30
 idle_poll_limit = 5
+
+[sources.tinyfish]
+enabled = true
+# Override the global interval for this source.
+interval = 60
 ```
 
-`ssp`、`exa`、`tinyfish`、`tavily`、`firecrawl`、`parallel` 各有独立的配置节。
+`ssp`、`tinyfish`、`tavily`、`firecrawl`、`parallel` 各有独立的配置节。
 共同配置项：
+
+`source`、`interval`、`timeout`、`idle_poll_limit` 可在 `[sources]` 中统一设置，
+单个 `[sources.<provider>]` 中的同名字段优先；SSP 同样继承这些默认值。
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
@@ -46,19 +54,19 @@ CLI 必须提前安装并登录；Exporter 不安装 CLI，也不发起交互登
 | --- | --- | --- |
 | TinyFish | CLI 或 API | 钱包余额、全部历史搜索调用数 |
 | Firecrawl | CLI 或 API `/v2/team/credit-usage` | 账户剩余 credits、当前套餐 credits 限额 |
-| Parallel | `parallel-cli balance --json get` | USD 预付余额、待扣金额、后付费状态 |
+| Parallel | `parallel-cli balance --json get` | USD 预付余额 |
 | SSP | 内置 API | 当前业务日上传、下载、扣费流量 |
-| Exa | Team Management API | 指定 Key 最近 30 天的美元消耗 |
+| Exa | 不支持 | 用量查询需要特殊的 Team Service API key，并需单独开通 Team Management 权限，普通 API Key 不适用 |
 | Tavily | API `/usage` | Key、套餐、按量付费各自的 credits 用量和限额 |
 
 `auto` 会先查询 CLI；CLI 不存在、未认证或查询失败时，才尝试已实现的 API 适配器。
-Exa、Tavily 的 `auto` 直接使用 API；Parallel 保留 CLI OAuth，不支持普通 API Key 查询余额。
+Tavily 的 `auto` 直接使用 API；Parallel 保留 CLI OAuth，余额 API 不接受普通 API Key，因此不提供 API 适配器。
 SSP 的 `auto` 使用内置 API，不支持 CLI 来源。
 
 TinyFish 钱包和搜索用量分别查询。旧账户没有钱包时仍可输出成功取得的搜索用量，
 状态为 `partial`。Firecrawl 的账户余额可能包含额外充值，不能与套餐额度直接相减
-得到真实消耗。Parallel 的待扣金额不是累计消费；后付费账户只输出后付费状态，
-不将 API 固定返回的零余额解释为额度耗尽。无法获得的指标不会补成零。
+得到真实消耗。Parallel 只输出接口报告的余额，不处理待扣金额或后付费状态。
+无法获得的指标不会补成零。
 
 ## 凭据
 
@@ -71,33 +79,28 @@ SSP_AUTHORIZATION="Bearer <credential>"
 ```
 
 搜索 CLI 复用自身现有登录凭据；API 使用 `TINYFISH_API_KEY`、`TAVILY_API_KEY`、
-`FIRECRAWL_API_KEY`。Exa 使用独立的 `EXA_SERVICE_KEY`，普通 Search Key 不可替代，
-并需先向 Exa 开通 Team Management 权限。`.env` 已加入 Git 和 Docker 构建忽略列表。
+`FIRECRAWL_API_KEY`。Exa 不提供采集器或配置节；Parallel 不读取普通 API Key 查询余额。
+`.env` 已加入 Git 和 Docker 构建忽略列表。
 配置在命令启动时读取，修改后需要重启命令。
 
-例如，直接使用 Tavily 和 Exa API：
+例如，直接使用 Tavily API：
 
 ```toml
 [sources.tavily]
 enabled = true
 source = "api"
-
-[sources.exa]
-enabled = true
-api_key_id = "550e8400-e29b-41d4-a716-446655440000"
 ```
 
 同目录 `.env`：
 
 ```dotenv
 TAVILY_API_KEY=<credential>
-EXA_SERVICE_KEY=<service-credential>
 ```
 
-Tavily 的 Key 限额为 `null` 时表示无限额，只输出用量；零限额仍为有效值。
+Tavily 的限额（包括 `key.limit`、`account.paygo_limit`）可以为 `null`，此时只输出
+对应范围的用量，不输出 cap 或 remaining；零限额仍为有效值。
 各范围的剩余量取同范围限额减用量并最低为零，不将 credits 当作调用次数。
 其 `/usage` 限流为每 10 分钟 10 次，默认 120 秒间隔可用，频繁运行 Status 也会占用限流。
-Exa 不从消耗反推账户余额，最近 30 天也不等同于自然月或账期。
 HTTP 错误仅显示状态码，不输出响应正文，不自动重试。
 
 ## Watch 与 Collect
@@ -125,16 +128,14 @@ HTTP 错误仅显示状态码，不输出响应正文，不自动重试。
 | 指标 | 单位 | 含义 |
 | --- | --- | --- |
 | `kazu_search_money_remaining` | 金额 | 可用余额，币种由 `currency` 标签指定 |
-| `kazu_search_money_used` | 金额 | 范围内消耗，币种由 `currency` 标签指定 |
-| `kazu_search_money_pending_debit` | 金额 | 待扣金额，币种由 `currency` 标签指定 |
 | `kazu_search_credits_remaining` | credits | 指定范围的剩余量 |
 | `kazu_search_credits_cap` | credits | 指定范围的限额 |
 | `kazu_search_credits_used` | credits | 指定范围的已用量 |
 | `kazu_search_calls_used` | 调用次数 | 已调用次数 |
 
 `scope` 表示数据范围：`account` 为账户、`plan` 为套餐账期、`all_time` 为全部历史。
-Tavily 还使用 `key` 和 `paygo`；Exa 的 `key_30d` 为指定 Key 最近 30 天。
-待扣金额不等于累计消费；账户剩余 credits 和套餐 cap 的范围不同，不能直接相减。
+Tavily 还使用 `key` 和 `paygo`。
+账户剩余 credits 和套餐 cap 的范围不同，不能直接相减。
 例如：
 
 ```prometheus
@@ -143,8 +144,6 @@ kazu_search_credits_remaining{provider="firecrawl",scope="account"} 1000
 kazu_search_credits_cap{provider="firecrawl",scope="plan"} 500000
 kazu_search_calls_used{provider="tinyfish",scope="all_time"} 42
 ```
-
-后付费标志属于诊断信息，单独使用 `kazu_source_postpaid{provider}`，不混入金额指标。
 
 SSP 保留每日流量 Counter：`kazu_subscription_traffic_upload_bytes_total`、
 `kazu_subscription_traffic_download_bytes_total`、`kazu_subscription_traffic_deducted_bytes_total`，
@@ -177,6 +176,7 @@ docker run --rm -p 9101:9101 \
 - [TinyFish CLI](https://docs.tinyfish.ai/cli/commands)
 - [Firecrawl credit-usage 实现](https://github.com/firecrawl/cli/blob/main/src/commands/credit-usage.ts)
 - [Parallel CLI 实现](https://github.com/parallel-web/parallel-web-tools/blob/main/parallel_web_tools/cli/commands.py)
+- [Parallel 余额 API 认证要求](https://docs.parallel.ai/service-api/balance/get-balance)
 - [Tavily usage](https://docs.tavily.com/documentation/api-reference/endpoint/usage)
 - [Tavily rate limits](https://docs.tavily.com/documentation/rate-limits)
 - [Exa Key usage](https://exa.ai/docs/reference/team-management/get-api-key-usage)

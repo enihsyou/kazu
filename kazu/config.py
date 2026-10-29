@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import os
-import re
 import tomllib
 from dataclasses import dataclass, field
 from importlib import resources
@@ -16,7 +15,7 @@ from platformdirs import user_config_path
 
 APP_NAME = "kazu"
 APP_AUTHOR = "KokomiNetwork"
-PROVIDERS = ("exa", "tinyfish", "tavily", "firecrawl", "parallel")
+PROVIDERS = ("tinyfish", "tavily", "firecrawl", "parallel")
 
 
 @dataclass(frozen=True)
@@ -40,22 +39,6 @@ class SourceConfig:
                 raise ValueError(f"{name} must be a finite positive number")
         if type(self.idle_poll_limit) is not int or self.idle_poll_limit < 1:
             raise ValueError("idle_poll_limit must be a positive integer")
-
-
-@dataclass(frozen=True)
-class ExaConfig(SourceConfig):
-    service_key: str = field(default="", repr=False)
-    api_key_id: str = ""
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if not isinstance(self.api_key_id, str) or (
-            self.api_key_id
-            and not re.fullmatch(
-                r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", self.api_key_id
-            )
-        ):
-            raise ValueError("sources.exa.api_key_id must be a hyphenated UUID")
 
 
 @dataclass(frozen=True)
@@ -109,26 +92,22 @@ def load_config(path: Path | None = None) -> AppConfig:
     def credential(name: str) -> str:
         return os.environ.get(name, secrets.get(name) or "")
 
-    sources = merged["sources"]
+    sources = dict(merged["sources"])
+    defaults = {
+        key: sources.pop(key) for key in ("source", "interval", "timeout", "idle_poll_limit")
+    }
     unknown = sources.keys() - {"ssp", *PROVIDERS}
     if unknown:
         raise ValueError(f"Unknown sources: {', '.join(sorted(unknown))}")
     for name, values in sources.items():
         if {"api_key", "authorization", "token", "service_key"} & values.keys():
             raise ValueError(f"sources.{name}: credentials belong in {env_path}, not TOML")
+        sources[name] = defaults | values
     return AppConfig(
         metrics=MetricsConfig(**merged["metrics"]),
         ssp=SSPConfig(**sources["ssp"], authorization=credential("SSP_AUTHORIZATION")),
         providers={
-            name: (
-                ExaConfig(
-                    **sources[name],
-                    api_key=credential("EXA_API_KEY"),
-                    service_key=credential("EXA_SERVICE_KEY"),
-                )
-                if name == "exa"
-                else SourceConfig(**sources[name], api_key=credential(f"{name.upper()}_API_KEY"))
-            )
+            name: SourceConfig(**sources[name], api_key=credential(f"{name.upper()}_API_KEY"))
             for name in PROVIDERS
         },
     )

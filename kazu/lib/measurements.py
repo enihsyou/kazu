@@ -20,13 +20,6 @@ class MetricDefinition:
 MONEY_REMAINING = MetricDefinition(
     "kazu_search_money_remaining", "Available account balance in the labeled currency."
 )
-MONEY_USED = MetricDefinition(
-    "kazu_search_money_used", "Spending in the labeled currency and scope."
-)
-MONEY_PENDING_DEBIT = MetricDefinition(
-    "kazu_search_money_pending_debit",
-    "Pending debit in the labeled currency, not cumulative spending.",
-)
 CREDITS_REMAINING = MetricDefinition(
     "kazu_search_credits_remaining", "Available credits in the selected scope."
 )
@@ -36,9 +29,6 @@ CREDITS_CAP = MetricDefinition(
 CREDITS_USED = MetricDefinition("kazu_search_credits_used", "Credits used in the selected scope.")
 CALLS_USED = MetricDefinition(
     "kazu_search_calls_used", "Number of search requests in the selected scope."
-)
-SOURCE_POSTPAID = MetricDefinition(
-    "kazu_source_postpaid", "Whether the organization is billed by invoice."
 )
 SOURCE_UP = MetricDefinition("kazu_source_up", "Whether the latest query fully succeeded.")
 SOURCE_WATCHING = MetricDefinition("kazu_source_watching", "Whether background polling is active.")

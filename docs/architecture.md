@@ -36,7 +36,6 @@ Status 使用独立线程池执行一次性查询，复用同一来源装配与�
 
 在 `sources/search.py` 的 `API_COLLECTORS` 中加入 provider 对应的查询函数，签名为
 `SourceConfig -> UsageSnapshot`。配置已从 `.env` 注入 `api_key`，禁止从 TOML 读取凭据。
-Exa 使用 `ExaConfig` 单独注入 `EXA_SERVICE_KEY`，通过非敏感的 `api_key_id` 指定查询对象。
 `auto` 首先尝试 CLI；CLI 不可用时调用已注册的 API 适配器。显式 `cli` 或 `api` 则只用
 指定来源。来源特有的非敏感配置随适配器一起增加，不提前引入空的服务层或认证框架。
 

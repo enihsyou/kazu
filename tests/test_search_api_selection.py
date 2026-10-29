@@ -4,6 +4,7 @@ import pytest
 
 from kazu.config import SourceConfig
 from kazu.lib.usage import CollectionError, UsageSnapshot
+from kazu.sources import search
 from kazu.sources.search import API_COLLECTORS, CLI_COLLECTORS, SearchSource
 
 
@@ -43,3 +44,15 @@ def test_explicit_cli_does_not_fall_back(monkeypatch):
     monkeypatch.setitem(API_COLLECTORS, "firecrawl", api)
     with pytest.raises(CollectionError, match="CLI unavailable"):
         SearchSource("firecrawl", SourceConfig(source="cli")).collect()
+
+
+def test_parallel_only_reads_balance(monkeypatch):
+    def run_json(command, args, timeout):
+        assert (command, args, timeout) == ("parallel-cli", ["balance", "--json", "get"], 30)
+        return {"credit_balance_cents": 1234}
+
+    monkeypatch.setattr(search, "_run_json", run_json)
+    snapshot = SearchSource("parallel", SourceConfig(source="cli")).collect()
+    assert [(m.name, m.value, dict(m.labels)) for m in snapshot.measurements] == [
+        ("kazu_search_money_remaining", 12.34, {"currency": "USD", "scope": "account"})
+    ]

@@ -35,8 +35,8 @@ def _parse_usage(data: dict[str, Any]) -> UsageSnapshot:
         for scope, usage, limit in scopes:
             used = _credits(usage)
             measurements.append(CREDITS_USED.create(used, scope=scope))
-            # Only the key limit can be null, meaning unlimited rather than zero.
-            if scope == "key" and limit is None:
+            # Limits can be null, including paygo_limit on accounts without a cap.
+            if limit is None:
                 continue
             cap = _credits(limit)
             measurements.extend(

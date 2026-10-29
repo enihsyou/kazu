@@ -5,21 +5,23 @@ host = "127.0.0.1"
 # HTTP listen port for GET /metrics.
 port = 9101
 
-# Sources are disabled by default. Shared defaults: source="auto" (CLI, then API),
-# interval=120 seconds, timeout=30 seconds, idle_poll_limit=5 unconsumed polls.
+[sources]
+# Shared defaults; individual sources can override these fields.
+# auto tries CLI first, then API.
+source = "auto"
+# Seconds between queries.
+interval = 120.0
+# Timeout for each CLI command or HTTP request, in seconds.
+timeout = 30.0
+# Pause after this many unconsumed polls.
+idle_poll_limit = 5
+
 [sources.ssp]
 enabled = false
 # Gateway base URL where encrypted messages are sent.
 gateway_base_url = "https://x1.thecores.top"
 # Base URL of the SSP API, used for API requests wrapped in gateway messages.
 api_base_url = "https://s1.thefew01.top/api/v1"
-# Request timeout in seconds.
-timeout = 30.0
-
-[sources.exa]
-enabled = false
-# UUID of the API key whose last 30 days of spending should be queried.
-api_key_id = ""
 
 [sources.tinyfish]
 enabled = false

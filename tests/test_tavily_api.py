@@ -88,17 +88,25 @@ def test_request_and_documented_usage(monkeypatch, usage):
     assert not snapshot.warnings
 
 
-@pytest.mark.parametrize("limit", [None, 0, 100])
-def test_unlimited_zero_and_exceeded_key_limit(response, limit):
-    response["key"]["limit"] = limit
+@pytest.mark.parametrize(
+    "section, field, scope, used",
+    [
+        ("key", "limit", "key", 150),
+        ("account", "plan_limit", "plan", 500),
+        ("account", "paygo_limit", "paygo", 25),
+    ],
+)
+@pytest.mark.parametrize("limit", [None, 0, 10])
+def test_unlimited_zero_and_exceeded_limit(response, section, field, scope, used, limit):
+    response[section][field] = limit
     values = _values(tavily_api.collect(SourceConfig(api_key="fixture-key")))
-    assert values[CREDITS_USED.name, "key"] == 150
+    assert values[CREDITS_USED.name, scope] == used
     if limit is None:
-        assert (CREDITS_CAP.name, "key") not in values
-        assert (CREDITS_REMAINING.name, "key") not in values
+        assert (CREDITS_CAP.name, scope) not in values
+        assert (CREDITS_REMAINING.name, scope) not in values
     else:
-        assert values[CREDITS_CAP.name, "key"] == limit
-        assert values[CREDITS_REMAINING.name, "key"] == 0
+        assert values[CREDITS_CAP.name, scope] == limit
+        assert values[CREDITS_REMAINING.name, scope] == 0
 
 
 @pytest.mark.parametrize(
@@ -115,8 +123,9 @@ def test_unlimited_zero_and_exceeded_key_limit(response, limit):
 @pytest.mark.parametrize("value", [True, "secret-response", -1, float("nan"), float("inf")])
 def test_invalid_numbers_are_safe_errors(response, section, field, value):
     response[section][field] = value
+    config = SourceConfig(api_key="fixture-key")
     with pytest.raises(CollectionError, match="invalid schema") as error:
-        tavily_api.collect(SourceConfig(api_key="fixture-key"))
+        tavily_api.collect(config)
     formatted = "".join(traceback.format_exception(error.value))
     assert "secret-response" not in formatted
     assert "fixture-key" not in formatted
@@ -144,9 +153,7 @@ def test_missing_required_values_fail(response, section, field):
     [
         ("key", "usage"),
         ("account", "plan_usage"),
-        ("account", "plan_limit"),
         ("account", "paygo_usage"),
-        ("account", "paygo_limit"),
     ],
 )
 def test_null_required_numbers_fail(response, section, field):
