@@ -9,8 +9,8 @@ def test_source_defaults_and_overrides(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text(
         '[sources]\nsource = "api"\ninterval = 45\ntimeout = 8\nidle_poll_limit = 2\n'
-        '[sources.tinyfish]\nenabled = true\ninterval = 15\n'
-        '[sources.ssp]\ntimeout = 12\n'
+        "[sources.tinyfish]\nenabled = true\ninterval = 15\n"
+        "[sources.ssp]\ntimeout = 12\n"
         '[sources.firecrawl]\nsource = "cli"\n',
         encoding="utf-8",
     )
