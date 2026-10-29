@@ -24,9 +24,11 @@ enabled = true
 enabled = true
 ```
 
-The initial search providers use the installed official TinyFish, Firecrawl and
-Parallel CLIs. Exa and Tavily have configuration sections and an API adapter
-extension point; search API adapters are not implemented in this release.
+TinyFish and Firecrawl support their official CLIs and API keys. Tavily uses its
+usage API; Exa uses the Team Management API with a separate Service Key and a
+configured `api_key_id`. Parallel uses its official CLI with an existing OAuth login.
+`source="auto"` prefers CLI and falls back to a supported API; use `source="api"`
+to query the API directly.
 SSP remains available through `kazu ssp get` and the unified metrics endpoint.
 
 Configuration locations:

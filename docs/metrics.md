@@ -42,16 +42,17 @@ CLI 必须提前安装并登录；Exporter 不安装 CLI，也不发起交互登
 
 ## 当前数据源
 
-| 来源 | 初版接入 | 导出内容 |
+| 来源 | 接入方式 | 导出内容 |
 | --- | --- | --- |
-| TinyFish | `tinyfish wallet status`、`tinyfish search usage --limit 1` | USD 钱包余额、全部历史搜索调用数 |
-| Firecrawl | `firecrawl credit-usage --json` | 账户剩余 credits、当前套餐 credits 限额 |
+| TinyFish | CLI 或 API | 钱包余额、全部历史搜索调用数 |
+| Firecrawl | CLI 或 API `/v2/team/credit-usage` | 账户剩余 credits、当前套餐 credits 限额 |
 | Parallel | `parallel-cli balance --json get` | USD 预付余额、待扣金额、后付费状态 |
 | SSP | 内置 API | 当前业务日上传、下载、扣费流量 |
-| Exa、Tavily | 预留 API 适配入口 | 初版启用后会明确报告尚未实现 |
+| Exa | Team Management API | 指定 Key 最近 30 天的美元消耗 |
+| Tavily | API `/usage` | Key、套餐、按量付费各自的 credits 用量和限额 |
 
 `auto` 会先查询 CLI；CLI 不存在、未认证或查询失败时，才尝试已实现的 API 适配器。
-初版搜索来源只有 CLI 适配器，指定 `source="api"` 会报告尚未实现。
+Exa、Tavily 的 `auto` 直接使用 API；Parallel 保留 CLI OAuth，不支持普通 API Key 查询余额。
 SSP 的 `auto` 使用内置 API，不支持 CLI 来源。
 
 TinyFish 钱包和搜索用量分别查询。旧账户没有钱包时仍可输出成功取得的搜索用量，
@@ -69,9 +70,35 @@ TinyFish 钱包和搜索用量分别查询。旧账户没有钱包时仍可输�
 SSP_AUTHORIZATION="Bearer <credential>"
 ```
 
-搜索 CLI 复用自身现有登录凭据；`.env.example` 中的搜索 API Key 变量是为后续 API
-适配器预留的，初版不使用它们查询搜索账户。`.env` 已加入 Git 和 Docker 构建忽略列表。
+搜索 CLI 复用自身现有登录凭据；API 使用 `TINYFISH_API_KEY`、`TAVILY_API_KEY`、
+`FIRECRAWL_API_KEY`。Exa 使用独立的 `EXA_SERVICE_KEY`，普通 Search Key 不可替代，
+并需先向 Exa 开通 Team Management 权限。`.env` 已加入 Git 和 Docker 构建忽略列表。
 配置在命令启动时读取，修改后需要重启命令。
+
+例如，直接使用 Tavily 和 Exa API：
+
+```toml
+[sources.tavily]
+enabled = true
+source = "api"
+
+[sources.exa]
+enabled = true
+api_key_id = "550e8400-e29b-41d4-a716-446655440000"
+```
+
+同目录 `.env`：
+
+```dotenv
+TAVILY_API_KEY=<credential>
+EXA_SERVICE_KEY=<service-credential>
+```
+
+Tavily 的 Key 限额为 `null` 时表示无限额，只输出用量；零限额仍为有效值。
+各范围的剩余量取同范围限额减用量并最低为零，不将 credits 当作调用次数。
+其 `/usage` 限流为每 10 分钟 10 次，默认 120 秒间隔可用，频繁运行 Status 也会占用限流。
+Exa 不从消耗反推账户余额，最近 30 天也不等同于自然月或账期。
+HTTP 错误仅显示状态码，不输出响应正文，不自动重试。
 
 ## Watch 与 Collect
 
@@ -98,12 +125,15 @@ SSP_AUTHORIZATION="Bearer <credential>"
 | 指标 | 单位 | 含义 |
 | --- | --- | --- |
 | `kazu_search_money_remaining` | 金额 | 可用余额，币种由 `currency` 标签指定 |
+| `kazu_search_money_used` | 金额 | 范围内消耗，币种由 `currency` 标签指定 |
 | `kazu_search_money_pending_debit` | 金额 | 待扣金额，币种由 `currency` 标签指定 |
 | `kazu_search_credits_remaining` | credits | 账户剩余 |
 | `kazu_search_credits_cap` | credits | 套餐额度 |
+| `kazu_search_credits_used` | credits | 指定范围的已用量 |
 | `kazu_search_calls_used` | 调用次数 | 已调用次数 |
 
 `scope` 表示数据范围：`account` 为账户、`plan` 为套餐账期、`all_time` 为全部历史。
+Tavily 还使用 `key` 和 `paygo`；Exa 的 `key_30d` 为指定 Key 最近 30 天。
 待扣金额不等于累计消费；账户剩余 credits 和套餐 cap 的范围不同，不能直接相减。
 例如：
 
@@ -147,3 +177,7 @@ docker run --rm -p 9101:9101 \
 - [TinyFish CLI](https://docs.tinyfish.ai/cli/commands)
 - [Firecrawl credit-usage 实现](https://github.com/firecrawl/cli/blob/main/src/commands/credit-usage.ts)
 - [Parallel CLI 实现](https://github.com/parallel-web/parallel-web-tools/blob/main/parallel_web_tools/cli/commands.py)
+- [Tavily usage](https://docs.tavily.com/documentation/api-reference/endpoint/usage)
+- [Tavily rate limits](https://docs.tavily.com/documentation/rate-limits)
+- [Exa Key usage](https://exa.ai/docs/reference/team-management/get-api-key-usage)
+- [Firecrawl credit usage](https://docs.firecrawl.dev/api-reference/endpoint/credit-usage)

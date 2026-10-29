@@ -5,6 +5,7 @@
 - `lib/usage.py`：不可变 `Measurement`、`UsageSnapshot` 和 `UsageSource` 协议。
 - `lib/measurements.py`：集中定义指标名称、说明和类型，通过 `MetricDefinition.create()` 创建测量值。
 - `sources/search.py`：官方 CLI 调用和 JSON 映射；CLI 优先、API 次之的选择逻辑。
+- `sources/*_api.py`：各家 API 请求与指标映射；`sources/api_http.py` 统一处理 HTTP 和 JSON 错误，不输出原始响应或凭据。
 - `sources/registry.py`：来源装配与 SSP 快照适配。
 - `sources/ssp.py`、`lib/sspgateway/`：SSP 网关访问与流量规范化。
 - `lib/metrics/watch.py`：每个来源一个后台线程，负责定时查询、缓存和空闲暂停。
@@ -35,6 +36,7 @@ Status 使用独立线程池执行一次性查询，复用同一来源装配与�
 
 在 `sources/search.py` 的 `API_COLLECTORS` 中加入 provider 对应的查询函数，签名为
 `SourceConfig -> UsageSnapshot`。配置已从 `.env` 注入 `api_key`，禁止从 TOML 读取凭据。
+Exa 使用 `ExaConfig` 单独注入 `EXA_SERVICE_KEY`，通过非敏感的 `api_key_id` 指定查询对象。
 `auto` 首先尝试 CLI；CLI 不可用时调用已注册的 API 适配器。显式 `cli` 或 `api` 则只用
 指定来源。来源特有的非敏感配置随适配器一起增加，不提前引入空的服务层或认证框架。
 

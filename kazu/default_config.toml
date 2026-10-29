@@ -18,6 +18,8 @@ timeout = 30.0
 
 [sources.exa]
 enabled = false
+# UUID of the API key whose last 30 days of spending should be queried.
+api_key_id = ""
 
 [sources.tinyfish]
 enabled = false

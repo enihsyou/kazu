@@ -20,6 +20,9 @@ class MetricDefinition:
 MONEY_REMAINING = MetricDefinition(
     "kazu_search_money_remaining", "Available account balance in the labeled currency."
 )
+MONEY_USED = MetricDefinition(
+    "kazu_search_money_used", "Spending in the labeled currency and scope."
+)
 MONEY_PENDING_DEBIT = MetricDefinition(
     "kazu_search_money_pending_debit",
     "Pending debit in the labeled currency, not cumulative spending.",
@@ -28,8 +31,9 @@ CREDITS_REMAINING = MetricDefinition(
     "kazu_search_credits_remaining", "Available account credits, including extra credits."
 )
 CREDITS_CAP = MetricDefinition(
-    "kazu_search_credits_cap", "Credit allowance for the current plan period."
+    "kazu_search_credits_cap", "Credit allowance for the selected scope."
 )
+CREDITS_USED = MetricDefinition("kazu_search_credits_used", "Credits used in the selected scope.")
 CALLS_USED = MetricDefinition(
     "kazu_search_calls_used", "Number of search requests in the selected scope."
 )

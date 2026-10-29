@@ -1,4 +1,4 @@
-"""Read official CLI JSON without exposing credentials or launching interactive login."""
+"""Select official CLI or API usage without launching interactive login."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from kazu.lib.measurements import (
     SOURCE_POSTPAID,
 )
 from kazu.lib.usage import CollectionError, UsageSnapshot
+from kazu.sources import exa_api, firecrawl_api, tavily_api, tinyfish_api
 
 
 def _run_json(command: str, args: list[str], timeout: float) -> dict[str, Any]:
@@ -108,8 +109,12 @@ CLI_COLLECTORS = {
     "firecrawl": ("firecrawl", _firecrawl),
     "parallel": ("parallel-cli", _parallel),
 }
-# API adapters use the same snapshot contract and receive credentials from .env.
-API_COLLECTORS: dict[str, Callable[[SourceConfig], UsageSnapshot]] = {}
+API_COLLECTORS: dict[str, Callable[[SourceConfig], UsageSnapshot]] = {
+    "exa": exa_api.collect,
+    "tinyfish": tinyfish_api.collect,
+    "tavily": tavily_api.collect,
+    "firecrawl": firecrawl_api.collect,
+}
 
 
 class SearchSource:
@@ -142,7 +147,7 @@ class SearchSource:
             return API_COLLECTORS[self.provider](config)
         if cli_error is not None:
             raise cli_error
-        raise CollectionError(f"{self.provider}: API usage collection is not implemented yet")
+        raise CollectionError(f"{self.provider}: API usage collection is not supported")
 
     def close(self) -> None:
-        """CLI commands hold no persistent resources."""
+        """CLI commands and one-shot HTTP requests hold no persistent resources."""
