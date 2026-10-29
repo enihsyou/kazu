@@ -16,7 +16,7 @@ from kazu.lib.measurements import (
     MONEY_REMAINING,
 )
 from kazu.lib.usage import CollectionError, UsageSnapshot
-from kazu.sources import firecrawl_api, tavily_api, tinyfish_api
+from kazu.sources import firecrawl_api, parallel_auth, tavily_api, tinyfish_api
 
 
 def _run_json(command: str, args: list[str], timeout: float) -> dict[str, Any]:
@@ -109,11 +109,30 @@ class SearchSource:
         self.provider = provider
         self.config = config
         self.mode = config.source
+        if self.mode == "auto":
+            if provider in API_COLLECTORS and config.api_key.strip():
+                self.mode = "api"
+            elif provider in CLI_COLLECTORS and shutil.which(
+                config.command or CLI_COLLECTORS[provider][0]
+            ):
+                self.mode = "cli"
+            elif provider == "parallel":
+                self.mode = "cli-auth"
+            else:
+                self.mode = "api"
+        self.auth = (
+            parallel_auth.ParallelAuth(config.timeout)
+            if self.mode == "cli-auth" and provider == "parallel"
+            else None
+        )
 
     def collect(self) -> UsageSnapshot:
         config = self.config
-        cli_error = None
-        if config.source in {"auto", "cli"} and self.provider in CLI_COLLECTORS:
+        if self.mode == "cli-auth":
+            if self.auth is None:
+                raise CollectionError(f"{self.provider}: cli-auth is not supported")
+            return self.auth.collect()
+        if self.mode == "cli" and self.provider in CLI_COLLECTORS:
             command, collect = CLI_COLLECTORS[self.provider]
             try:
                 snapshot = collect(config.command or command, config.timeout)
@@ -121,19 +140,12 @@ class SearchSource:
                 detail = (
                     str(exc) if isinstance(exc, CollectionError) else "Unexpected CLI JSON schema"
                 )
-                cli_error = CollectionError(detail)
-            else:
-                self.mode = "cli"
-                return snapshot
-        if config.source == "cli":
-            raise cli_error or CollectionError(
-                f"{self.provider} has no supported CLI usage command"
-            )
+                raise CollectionError(detail) from None
+            return snapshot
+        if self.mode == "cli":
+            raise CollectionError(f"{self.provider} has no supported CLI usage command")
         if self.provider in API_COLLECTORS:
-            self.mode = "api"
             return API_COLLECTORS[self.provider](config)
-        if cli_error is not None:
-            raise cli_error
         raise CollectionError(f"{self.provider}: API usage collection is not supported")
 
     def close(self) -> None:

@@ -1,4 +1,4 @@
-"""Keep CLI priority and explicit source selection when APIs are registered."""
+"""Select configured APIs before available CLIs."""
 
 import pytest
 
@@ -9,16 +9,14 @@ from kazu.sources.search import API_COLLECTORS, CLI_COLLECTORS, SearchSource
 
 
 @pytest.mark.parametrize(
-    "selection, cli_fails, expected",
-    [("auto", False, "cli"), ("auto", True, "api"), ("api", False, "api")],
+    "selection, api_key, expected",
+    [("auto", "key", "api"), ("auto", "", "cli"), ("api", "", "api")],
 )
-def test_source_selection(monkeypatch, selection, cli_fails, expected):
+def test_source_selection(monkeypatch, selection, api_key, expected):
     calls = []
 
     def cli(command, timeout):
         calls.append("cli")
-        if cli_fails:
-            raise CollectionError("CLI unavailable")
         return UsageSnapshot(())
 
     def api(config):
@@ -27,10 +25,11 @@ def test_source_selection(monkeypatch, selection, cli_fails, expected):
 
     monkeypatch.setitem(CLI_COLLECTORS, "firecrawl", ("firecrawl", cli))
     monkeypatch.setitem(API_COLLECTORS, "firecrawl", api)
-    source = SearchSource("firecrawl", SourceConfig(source=selection))
+    monkeypatch.setattr(search.shutil, "which", lambda command: command)
+    source = SearchSource("firecrawl", SourceConfig(source=selection, api_key=api_key))
     source.collect()
     assert source.mode == expected
-    assert calls == (["cli", "api"] if cli_fails else [expected])
+    assert calls == [expected]
 
 
 def test_explicit_cli_does_not_fall_back(monkeypatch):

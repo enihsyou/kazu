@@ -31,8 +31,8 @@ class SourceConfig:
     def __post_init__(self) -> None:
         if type(self.enabled) is not bool:
             raise ValueError("enabled must be a boolean")
-        if self.source not in {"auto", "cli", "api"}:
-            raise ValueError("source must be auto, cli, or api")
+        if self.source not in {"auto", "cli", "api", "cli-auth"}:
+            raise ValueError("source must be auto, cli, api, or cli-auth")
         for name in ("interval", "timeout"):
             value = getattr(self, name)
             if isinstance(value, bool) or not math.isfinite(value) or value <= 0:

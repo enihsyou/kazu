@@ -27,9 +27,10 @@ enabled = true
 TinyFish and Firecrawl support their official CLIs and API keys. Tavily uses its
 usage API. Exa is unsupported because usage queries require a special Team Service
 API key and separately enabled Team Management access. Parallel's balance API
-does not accept standard API keys; only its CLI with an existing OAuth login is supported.
-`source="auto"` prefers CLI and falls back to a supported API; use `source="api"`
-to query the API directly.
+does not accept standard API keys; it supports its CLI or its CLI OAuth credentials.
+`source="auto"` selects a configured API first, then an available CLI; Parallel
+uses its CLI credentials when the CLI is unavailable. Set `source="cli-auth"`
+to use those credentials directly.
 SSP remains available through `kazu ssp get` and the unified metrics endpoint.
 
 Configuration locations:

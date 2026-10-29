@@ -39,7 +39,7 @@ interval = 60
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `enabled` | `false` | 是否启用该数据源 |
-| `source` | `"auto"` | `auto` 优先 CLI，然后 API；也可指定 `cli` 或 `api` |
+| `source` | `"auto"` | `auto` 优先已配置的 API，其次可用 CLI；也可指定 `cli`、`api`，或 Parallel 的 `cli-auth` |
 | `interval` | `120` | 一次查询结束后，到下一次查询的间隔，单位秒 |
 | `timeout` | `30` | 单个 CLI 命令或 HTTP 请求的超时秒数 |
 | `idle_poll_limit` | `5` | 未被 Collect 消费的连续查询次数上限，必须为正整数 |
@@ -54,13 +54,13 @@ CLI 必须提前安装并登录；Exporter 不安装 CLI，也不发起交互登
 | --- | --- | --- |
 | TinyFish | CLI 或 API | 钱包余额、全部历史搜索调用数 |
 | Firecrawl | CLI 或 API `/v2/team/credit-usage` | 账户剩余 credits、当前套餐 credits 限额 |
-| Parallel | `parallel-cli balance --json get` | USD 预付余额 |
+| Parallel | CLI 或 `cli-auth` OAuth | USD 预付余额 |
 | SSP | 内置 API | 当前业务日上传、下载、扣费流量 |
 | Exa | 不支持 | 用量查询需要特殊的 Team Service API key，并需单独开通 Team Management 权限，普通 API Key 不适用 |
 | Tavily | API `/usage` | Key、套餐、按量付费各自的 credits 用量和限额 |
 
-`auto` 会先查询 CLI；CLI 不存在、未认证或查询失败时，才尝试已实现的 API 适配器。
-Tavily 的 `auto` 直接使用 API；Parallel 保留 CLI OAuth，余额 API 不接受普通 API Key，因此不提供 API 适配器。
+`auto` 启动时优先选择已配置 API Key 的 API，否则选择可用的 CLI；Parallel 在 CLI 不可用时使用 `cli-auth`。选择后查询失败不会切换来源。
+Parallel 余额 API 不接受普通 API Key。
 SSP 的 `auto` 使用内置 API，不支持 CLI 来源。
 
 TinyFish 钱包和搜索用量分别查询。旧账户没有钱包时仍可输出成功取得的搜索用量，
@@ -170,6 +170,12 @@ docker run --rm -p 9101:9101 \
 目录内放 `config.toml` 及可选的 `.env`。基础镜像提供 Python Exporter 与 SSP 支持；
 使用搜索 CLI 的自定义镜像还需要安装对应官方 CLI，并为容器内运行用户提供其登录状态。
 宿主机已有 CLI 和凭据不会自动出现在容器里。
+
+Parallel 的 `cli-auth` 读取当前用户的 `~/.config/parallel-web-tools/auth.json`；
+Windows 为 `%USERPROFILE%/.config/parallel-web-tools/auth.json`。容器需要将该文件
+复制或挂载至容器用户的对应路径。access token 到期后先检查文件修改时间，再按需
+刷新；新令牌只保存在内存，刷新可能使文件中的 refresh token 失效。进程重启后
+若文件中的令牌已失效，需要重新登录并复制新的认证文件。复制方式不会自动同步主机上的后续更新。
 
 ## 官方参考
 
