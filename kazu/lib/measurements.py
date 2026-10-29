@@ -28,7 +28,7 @@ MONEY_PENDING_DEBIT = MetricDefinition(
     "Pending debit in the labeled currency, not cumulative spending.",
 )
 CREDITS_REMAINING = MetricDefinition(
-    "kazu_search_credits_remaining", "Available account credits, including extra credits."
+    "kazu_search_credits_remaining", "Available credits in the selected scope."
 )
 CREDITS_CAP = MetricDefinition(
     "kazu_search_credits_cap", "Credit allowance for the selected scope."

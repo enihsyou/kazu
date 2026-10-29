@@ -127,8 +127,8 @@ HTTP 错误仅显示状态码，不输出响应正文，不自动重试。
 | `kazu_search_money_remaining` | 金额 | 可用余额，币种由 `currency` 标签指定 |
 | `kazu_search_money_used` | 金额 | 范围内消耗，币种由 `currency` 标签指定 |
 | `kazu_search_money_pending_debit` | 金额 | 待扣金额，币种由 `currency` 标签指定 |
-| `kazu_search_credits_remaining` | credits | 账户剩余 |
-| `kazu_search_credits_cap` | credits | 套餐额度 |
+| `kazu_search_credits_remaining` | credits | 指定范围的剩余量 |
+| `kazu_search_credits_cap` | credits | 指定范围的限额 |
 | `kazu_search_credits_used` | credits | 指定范围的已用量 |
 | `kazu_search_calls_used` | 调用次数 | 已调用次数 |
 
