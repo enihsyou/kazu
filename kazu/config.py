@@ -15,7 +15,7 @@ from platformdirs import user_config_path
 
 APP_NAME = "kazu"
 APP_AUTHOR = "KokomiNetwork"
-PROVIDERS = ("tinyfish", "tavily", "firecrawl", "parallel")
+PROVIDERS = ("tinyfish", "tavily", "firecrawl", "parallel", "minimax")
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,16 @@ class SourceConfig:
                 raise ValueError(f"{name} must be a finite positive number")
         if type(self.idle_poll_limit) is not int or self.idle_poll_limit < 1:
             raise ValueError("idle_poll_limit must be a positive integer")
+
+
+@dataclass(frozen=True)
+class MiniMaxConfig(SourceConfig):
+    region: str = "china"
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.region != "china":
+            raise ValueError("MiniMax region must be china; global is not supported yet")
 
 
 @dataclass(frozen=True)
@@ -107,7 +117,9 @@ def load_config(path: Path | None = None) -> AppConfig:
         metrics=MetricsConfig(**merged["metrics"]),
         ssp=SSPConfig(**sources["ssp"], authorization=credential("SSP_AUTHORIZATION")),
         providers={
-            name: SourceConfig(**sources[name], api_key=credential(f"{name.upper()}_API_KEY"))
+            name: (MiniMaxConfig if name == "minimax" else SourceConfig)(
+                **sources[name], api_key=credential(f"{name.upper()}_API_KEY")
+            )
             for name in PROVIDERS
         },
     )

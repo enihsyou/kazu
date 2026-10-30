@@ -2,7 +2,7 @@
 
 import pytest
 
-from kazu.config import SourceConfig, load_config
+from kazu.config import MiniMaxConfig, SourceConfig, load_config
 
 
 def test_source_defaults_and_overrides(tmp_path):
@@ -41,4 +41,12 @@ def test_invalid_global_defaults_are_rejected(tmp_path, settings):
     path = tmp_path / "config.toml"
     path.write_text(f"[sources]\n{settings}\n", encoding="utf-8")
     with pytest.raises(ValueError):
+        load_config(path)
+
+
+def test_minimax_region(tmp_path):
+    assert MiniMaxConfig().region == "china"
+    path = tmp_path / "config.toml"
+    path.write_text('[sources.minimax]\nregion = "global"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="global is not supported"):
         load_config(path)

@@ -33,6 +33,12 @@ uses its CLI credentials when the CLI is unavailable. Set `source="cli-auth"`
 to use those credentials directly.
 SSP remains available through `kazu ssp get` and the unified metrics endpoint.
 
+MiniMax China Token Plan quotas are available through the built-in API. Enable
+`[sources.minimax]` with `enabled = true` and put `MINIMAX_API_KEY=<Token Plan key>`
+in the `.env` beside your configuration. No `mmx` installation is needed.
+Both status and metrics report remaining quota by model and window; see
+[LLM quotas](docs/llm-quotas.md) for units and limitations.
+
 Configuration locations:
 
 - Linux: `~/.config/kazu/config.toml`

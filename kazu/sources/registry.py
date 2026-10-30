@@ -7,6 +7,7 @@ from kazu.lib.metrics.traffic import traffic_measurements
 from kazu.lib.sspgateway import SSPGatewayError
 from kazu.lib.traffic import SubscriptionTrafficCollectionError
 from kazu.lib.usage import CollectionError, UsageSnapshot, UsageSource
+from kazu.sources.minimax_api import MiniMaxSource
 from kazu.sources.search import SearchSource
 from kazu.sources.ssp import SSPSource
 
@@ -45,4 +46,6 @@ def source_configs(config: AppConfig) -> dict[str, SourceConfig]:
 def create_source(name: str, config: AppConfig) -> UsageSource:
     if name == "ssp":
         return SSPMetricsSource(config)
+    if name == "minimax":
+        return MiniMaxSource(config.providers[name])
     return SearchSource(name, config.providers[name])

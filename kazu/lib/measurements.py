@@ -31,6 +31,12 @@ CALLS_USED = MetricDefinition(
     "kazu_search_calls_used", "Number of search requests in the selected scope."
 )
 SOURCE_UP = MetricDefinition("kazu_source_up", "Whether the latest query fully succeeded.")
+LLM_QUOTA_REMAINING_RATIO = MetricDefinition(
+    "kazu_llm_quota_remaining_ratio", "Remaining fraction of the model's window quota."
+)
+LLM_QUOTA_RESET = MetricDefinition(
+    "kazu_llm_quota_reset_timestamp_seconds", "Unix timestamp when the quota window resets."
+)
 SOURCE_WATCHING = MetricDefinition("kazu_source_watching", "Whether background polling is active.")
 SOURCE_LAST_SUCCESS = MetricDefinition(
     "kazu_source_last_success_timestamp_seconds", "Unix timestamp of the last successful query."

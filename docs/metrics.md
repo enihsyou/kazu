@@ -30,7 +30,7 @@ enabled = true
 interval = 60
 ```
 
-`ssp`、`tinyfish`、`tavily`、`firecrawl`、`parallel` 各有独立的配置节。
+`ssp`、`tinyfish`、`tavily`、`firecrawl`、`parallel`、`minimax` 各有独立的配置节。
 共同配置项：
 
 `source`、`interval`、`timeout`、`idle_poll_limit` 可在 `[sources]` 中统一设置，
@@ -58,6 +58,7 @@ CLI 必须提前安装并登录；Exporter 不安装 CLI，也不发起交互登
 | SSP | 内置 API | 当前业务日上传、下载、扣费流量 |
 | Exa | 不支持 | 用量查询需要特殊的 Team Service API key，并需单独开通 Team Management 权限，普通 API Key 不适用 |
 | Tavily | API `/usage` | Key、套餐、按量付费各自的 credits 用量和限额 |
+| MiniMax China | API `/v1/token_plan/remains` | Token Plan 各模型、各窗口剩余比例与重置时间，窗口长度使用 interval 标签 |
 
 `auto` 启动时优先选择已配置 API Key 的 API，否则选择可用的 CLI；Parallel 在 CLI 不可用时使用 `cli-auth`。选择后查询失败不会切换来源。
 Parallel 余额 API 不接受普通 API Key。
@@ -80,6 +81,7 @@ SSP_AUTHORIZATION="Bearer <credential>"
 
 搜索 CLI 复用自身现有登录凭据；API 使用 `TINYFISH_API_KEY`、`TAVILY_API_KEY`、
 `FIRECRAWL_API_KEY`。Exa 不提供采集器或配置节；Parallel 不读取普通 API Key 查询余额。
+MiniMax 使用 `MINIMAX_API_KEY`，要求中国区 Token Plan 密钥；`auto` 和 `api` 都直接查询 API。
 `.env` 已加入 Git 和 Docker 构建忽略列表。
 配置在命令启动时读取，修改后需要重启命令。
 
@@ -176,6 +178,8 @@ Windows 为 `%USERPROFILE%/.config/parallel-web-tools/auth.json`。容器需要�
 复制或挂载至容器用户的对应路径。access token 到期后先检查文件修改时间，再按需
 刷新；新令牌只保存在内存，刷新可能使文件中的 refresh token 失效。进程重启后
 若文件中的令牌已失效，需要重新登录并复制新的认证文件。复制方式不会自动同步主机上的后续更新。
+
+LLM 周期配额的指标、窗口语义和配置示例见 [LLM 配额](llm-quotas.md)。
 
 ## 官方参考
 

@@ -7,6 +7,7 @@
 - `sources/search.py`：官方 CLI 调用和 JSON 映射；CLI 优先、API 次之的选择逻辑。
 - `sources/*_api.py`：各家 API 请求与指标映射；`sources/api_http.py` 统一处理 HTTP 和 JSON 错误，不输出原始响应或凭据。
 - `sources/registry.py`：来源装配与 SSP 快照适配。
+- `sources/minimax_api.py`：MiniMax China Token Plan 配额；独立于搜索来源，复用统一快照。
 - `sources/ssp.py`、`lib/sspgateway/`：SSP 网关访问与流量规范化。
 - `lib/metrics/watch.py`：每个来源一个后台线程，负责定时查询、缓存和空闲暂停。
 - `lib/metrics/exporter.py`：Prometheus Collector，只读取缓存并发送唤醒信号。
@@ -31,6 +32,7 @@ Collector 每次按快照生成指标族，没有长期存活的 Gauge 标签缓
 停止时发出通知；执行中的 CLI/HTTP 操作由自己的超时约束，资源在 worker 退出时关闭。
 
 Status 使用独立线程池执行一次性查询，复用同一来源装配与快照，不读写 Exporter 状态。
+终端按来源配置顺序预留行，任何查询完成时立即更新；JSON 和非终端输出仍在收齐后输出。
 
 ## 扩展 API 来源
 

@@ -34,3 +34,7 @@ enabled = false
 
 [sources.parallel]
 enabled = false
+
+[sources.minimax]
+enabled = false
+region = "china"
