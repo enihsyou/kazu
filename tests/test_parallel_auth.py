@@ -69,6 +69,7 @@ def test_login_slow_down_and_restart(oauth, caplog):
     assert snapshot.measurements[0].value == 12.34
     assert sleeps == [5, 5, 10, 15]
     assert "https://platform.parallel.ai/verify?code=CODE" in caplog.text
+    assert "Parallel OAuth authorization succeeded." in caplog.text
     assert requests[1][1]["data"] == {"client_id": "client", "scope": "balance:read"}
     saved = json.loads(auth.path.read_text("utf-8"))
     assert saved["client_id"] == "client"
@@ -77,6 +78,13 @@ def test_login_slow_down_and_restart(oauth, caplog):
     ParallelAuth(30, auth.path).collect()
     assert not responses
     assert len(requests) == 6  # Restart reused the saved access token without OAuth requests.
+
+
+def test_authentication_failure_reports_missing_field(oauth):
+    auth, responses, _, _ = oauth
+    responses.append((200, {}))
+    with pytest.raises(CollectionError, match="KeyError.*client_id"):
+        auth.collect()
 
 
 @pytest.mark.parametrize("rotate", [False, True])

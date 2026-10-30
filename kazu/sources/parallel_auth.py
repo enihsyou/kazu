@@ -135,6 +135,7 @@ class ParallelAuth:
                     break
                 else:
                     self._store_token(token)
+                    _LOGGER.info("Parallel OAuth authorization succeeded.")
                     return
         raise CollectionError("Parallel OAuth authorization timed out (5 minutes)")
 
@@ -166,8 +167,10 @@ class ParallelAuth:
                 timeout=self.timeout,
             )
             balance = float(data["credit_balance_cents"]) / 100
-        except (OSError, KeyError, TypeError, ValueError, httpx.RequestError):
+        except (OSError, KeyError, TypeError, ValueError, httpx.RequestError) as exc:
+            detail = "invalid JSON or numeric value" if isinstance(exc, ValueError) else str(exc)
             raise CollectionError(
-                "Parallel OAuth authentication, storage, or response failed"
+                "Parallel OAuth authentication, storage, or response failed "
+                f"({type(exc).__name__}): {detail}"
             ) from None
         return UsageSnapshot((MONEY_REMAINING.create(balance, currency="USD", scope="account"),))
