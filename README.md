@@ -11,7 +11,8 @@ uv run kazu status --json
 ```
 
 Enable the sources you want in `config.toml`. All fields have defaults; sources
-are disabled by default. This minimal configuration uses the current CLI login:
+are disabled by default. This configuration uses CLI login for TinyFish and
+Firecrawl, and device OAuth for Parallel:
 
 ```toml
 [sources.tinyfish]
@@ -22,15 +23,20 @@ enabled = true
 
 [sources.parallel]
 enabled = true
+source = "oauth"
 ```
 
 TinyFish and Firecrawl support their official CLIs and API keys. Tavily uses its
 usage API. Exa is unsupported because usage queries require a special Team Service
 API key and separately enabled Team Management access. Parallel's balance API
-does not accept standard API keys; it supports its CLI or its CLI OAuth credentials.
+does not accept standard API keys; it supports its CLI or device OAuth.
 `source="auto"` selects a configured API first, then an available CLI; Parallel
-uses its CLI credentials when the CLI is unavailable. Set `source="cli-auth"`
-to use those credentials directly.
+uses OAuth when the CLI is unavailable. Set `source="oauth"` to use OAuth directly.
+On first use, Kazu logs an authorization URL and waits up to five minutes, polling
+every five seconds (longer if the server requires it, with five seconds added for
+each `slow_down`). Client registration and tokens are saved in `parallel-oauth.json`
+beside the selected configuration file. Refreshed tokens are saved automatically
+and reused after restart. No Parallel CLI installation or credential file is needed.
 SSP remains available through `kazu ssp get` and the unified metrics endpoint.
 
 MiniMax China Token Plan quotas are available through the built-in API. Enable

@@ -3,6 +3,7 @@
 import pytest
 
 from kazu.config import MiniMaxConfig, SourceConfig, load_config
+from kazu.sources.registry import create_source
 
 
 def test_source_defaults_and_overrides(tmp_path):
@@ -50,3 +51,15 @@ def test_minimax_region(tmp_path):
     path.write_text('[sources.minimax]\nregion = "global"\n', encoding="utf-8")
     with pytest.raises(ValueError, match="global is not supported"):
         load_config(path)
+
+
+def test_oauth_file_is_beside_selected_config(tmp_path):
+    path = tmp_path / "custom.toml"
+    path.write_text('[sources.parallel]\nenabled = true\nsource = "oauth"\n', "utf-8")
+    source = create_source("parallel", load_config(path))
+    assert source.auth.path == tmp_path / "parallel-oauth.json"
+
+
+def test_cli_auth_is_removed():
+    with pytest.raises(ValueError):
+        SourceConfig(source="cli-auth")

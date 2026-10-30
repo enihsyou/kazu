@@ -39,14 +39,14 @@ interval = 60
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `enabled` | `false` | 是否启用该数据源 |
-| `source` | `"auto"` | `auto` 优先已配置的 API，其次可用 CLI；也可指定 `cli`、`api`，或 Parallel 的 `cli-auth` |
+| `source` | `"auto"` | `auto` 优先已配置的 API，其次可用 CLI；也可指定 `cli`、`api`，或 Parallel 的 `oauth` |
 | `interval` | `120` | 一次查询结束后，到下一次查询的间隔，单位秒 |
 | `timeout` | `30` | 单个 CLI 命令或 HTTP 请求的超时秒数 |
 | `idle_poll_limit` | `5` | 未被 Collect 消费的连续查询次数上限，必须为正整数 |
 | `command` | `""` | CLI 可执行文件名或路径；留空使用该服务的标准命令名 |
 
 Metrics 服务没有抓取间隔命令行参数。CLI 路径应当只包含可执行文件路径，不含参数。
-CLI 必须提前安装并登录；Exporter 不安装 CLI，也不发起交互登录。
+CLI 必须提前安装并登录；Exporter 不安装 CLI。Parallel 的 `oauth` 使用独立的设备授权。
 
 ## 当前数据源
 
@@ -54,13 +54,13 @@ CLI 必须提前安装并登录；Exporter 不安装 CLI，也不发起交互登
 | --- | --- | --- |
 | TinyFish | CLI 或 API | 钱包余额、全部历史搜索调用数 |
 | Firecrawl | CLI 或 API `/v2/team/credit-usage` | 账户剩余 credits、当前套餐 credits 限额 |
-| Parallel | CLI 或 `cli-auth` OAuth | USD 预付余额 |
+| Parallel | CLI 或 `oauth` 设备授权 | USD 预付余额 |
 | SSP | 内置 API | 当前业务日上传、下载、扣费流量 |
 | Exa | 不支持 | 用量查询需要特殊的 Team Service API key，并需单独开通 Team Management 权限，普通 API Key 不适用 |
 | Tavily | API `/usage` | Key、套餐、按量付费各自的 credits 用量和限额 |
 | MiniMax China | API `/v1/token_plan/remains` | Token Plan 各模型、各窗口剩余比例与重置时间，窗口长度使用 interval 标签 |
 
-`auto` 启动时优先选择已配置 API Key 的 API，否则选择可用的 CLI；Parallel 在 CLI 不可用时使用 `cli-auth`。选择后查询失败不会切换来源。
+`auto` 启动时优先选择已配置 API Key 的 API，否则选择可用的 CLI；Parallel 在 CLI 不可用时使用 `oauth`。选择后查询失败不会切换来源。
 Parallel 余额 API 不接受普通 API Key。
 SSP 的 `auto` 使用内置 API，不支持 CLI 来源。
 
@@ -173,11 +173,26 @@ docker run --rm -p 9101:9101 \
 使用搜索 CLI 的自定义镜像还需要安装对应官方 CLI，并为容器内运行用户提供其登录状态。
 宿主机已有 CLI 和凭据不会自动出现在容器里。
 
-Parallel 的 `cli-auth` 读取当前用户的 `~/.config/parallel-web-tools/auth.json`；
-Windows 为 `%USERPROFILE%/.config/parallel-web-tools/auth.json`。容器需要将该文件
-复制或挂载至容器用户的对应路径。access token 到期后先检查文件修改时间，再按需
-刷新；新令牌只保存在内存，刷新可能使文件中的 refresh token 失效。进程重启后
-若文件中的令牌已失效，需要重新登录并复制新的认证文件。复制方式不会自动同步主机上的后续更新。
+## Parallel OAuth
+
+```toml
+[sources.parallel]
+enabled = true
+source = "oauth"
+```
+
+启动后的首次查询会读取实际配置文件旁的 `parallel-oauth.json`。没有可用令牌时，
+Kazu 注册自己的 OAuth 客户端，仅申请 `balance:read` 权限，在终端日志打印授权链接和
+验证码，等待最多 5 分钟。Metrics 在该来源的后台线程中等待，其他来源仍可查询；
+Status 的日志写到 stderr，不影响 JSON 输出。
+
+默认每 5 秒轮询一次；服务端要求更长间隔时使用该间隔。每次收到 `slow_down` 都将
+后续轮询间隔增加 5 秒。拒绝授权立即停止；设备码过期后在剩余等待时间内重新申请。
+
+客户端 ID、access token、refresh token 和 access token 到期时间写入该 JSON 文件。
+access token 到期后自动刷新并原子替换文件，refresh token 轮换时同步保存；服务端未
+返回新 refresh token 时保留原值。重启直接读取文件复用认证；refresh token 失效时
+重新发起设备授权。该文件含敏感凭据，已加入 Git 与 Docker 构建忽略列表。
 
 LLM 周期配额的指标、窗口语义和配置示例见 [LLM 配额](llm-quotas.md)。
 
@@ -187,6 +202,7 @@ LLM 周期配额的指标、窗口语义和配置示例见 [LLM 配额](llm-quot
 - [Firecrawl credit-usage 实现](https://github.com/firecrawl/cli/blob/main/src/commands/credit-usage.ts)
 - [Parallel CLI 实现](https://github.com/parallel-web/parallel-web-tools/blob/main/parallel_web_tools/cli/commands.py)
 - [Parallel 余额 API 认证要求](https://docs.parallel.ai/service-api/balance/get-balance)
+- [Parallel Account API OAuth](https://docs.parallel.ai/integrations/account-api)
 - [Tavily usage](https://docs.tavily.com/documentation/api-reference/endpoint/usage)
 - [Tavily rate limits](https://docs.tavily.com/documentation/rate-limits)
 - [Exa Key usage](https://exa.ai/docs/reference/team-management/get-api-key-usage)

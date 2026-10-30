@@ -31,8 +31,8 @@ class SourceConfig:
     def __post_init__(self) -> None:
         if type(self.enabled) is not bool:
             raise ValueError("enabled must be a boolean")
-        if self.source not in {"auto", "cli", "api", "cli-auth"}:
-            raise ValueError("source must be auto, cli, api, or cli-auth")
+        if self.source not in {"auto", "cli", "api", "oauth"}:
+            raise ValueError("source must be auto, cli, api, or oauth")
         for name in ("interval", "timeout"):
             value = getattr(self, name)
             if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
@@ -69,6 +69,7 @@ class AppConfig:
     metrics: MetricsConfig
     ssp: SSPConfig
     providers: dict[str, SourceConfig]
+    config_path: Path = field(default_factory=lambda: get_config_path())
 
 
 DEFAULT_CONFIG_TOML = resources.files(APP_NAME).joinpath("default_config.toml").read_text("utf-8")
@@ -114,6 +115,7 @@ def load_config(path: Path | None = None) -> AppConfig:
             raise ValueError(f"sources.{name}: credentials belong in {env_path}, not TOML")
         sources[name] = defaults | values
     return AppConfig(
+        config_path=path,
         metrics=MetricsConfig(**merged["metrics"]),
         ssp=SSPConfig(**sources["ssp"], authorization=credential("SSP_AUTHORIZATION")),
         providers={

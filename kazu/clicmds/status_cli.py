@@ -19,7 +19,7 @@ from rich.text import Text
 
 from kazu.clicmds.base import CLICommand
 from kazu.clicmds.documentation import DocumentationAction
-from kazu.clicmds.ssp_display import _format_bytes
+from kazu.clicmds.ssp_display import SSPConsole, _format_bytes
 from kazu.config import AppConfig, SourceConfig, load_config
 from kazu.exitcodes import EXIT_FAILURE, EXIT_SUCCESS
 from kazu.lib.measurements import (
@@ -145,6 +145,7 @@ class StatusCommand(
 
     def _run(self, args: argparse.Namespace) -> int:
         config = load_config(args.config)
+        SSPConsole(stderr=True).configure_logging()
         settings_by_name = source_configs(config)
         results = [_initial_result(name, settings) for name, settings in settings_by_name.items()]
         console = Console(markup=False)

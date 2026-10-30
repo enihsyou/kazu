@@ -48,4 +48,6 @@ def create_source(name: str, config: AppConfig) -> UsageSource:
         return SSPMetricsSource(config)
     if name == "minimax":
         return MiniMaxSource(config.providers[name])
-    return SearchSource(name, config.providers[name])
+    return SearchSource(
+        name, config.providers[name], oauth_path=config.config_path.with_name("parallel-oauth.json")
+    )

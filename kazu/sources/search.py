@@ -1,4 +1,4 @@
-"""Select official CLI or API usage without launching interactive login."""
+"""Select official CLI, API, or device OAuth usage."""
 
 from __future__ import annotations
 
@@ -6,9 +6,10 @@ import json
 import shutil
 import subprocess
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
-from kazu.config import SourceConfig
+from kazu.config import SourceConfig, get_config_path
 from kazu.lib.measurements import (
     CALLS_USED,
     CREDITS_CAP,
@@ -105,7 +106,9 @@ API_COLLECTORS: dict[str, Callable[[SourceConfig], UsageSnapshot]] = {
 
 
 class SearchSource:
-    def __init__(self, provider: str, config: SourceConfig) -> None:
+    def __init__(
+        self, provider: str, config: SourceConfig, *, oauth_path: Path | None = None
+    ) -> None:
         self.provider = provider
         self.config = config
         self.mode = config.source
@@ -117,20 +120,25 @@ class SearchSource:
             ):
                 self.mode = "cli"
             elif provider == "parallel":
-                self.mode = "cli-auth"
+                self.mode = "oauth"
             else:
                 self.mode = "api"
         self.auth = (
-            parallel_auth.ParallelAuth(config.timeout)
-            if self.mode == "cli-auth" and provider == "parallel"
+            parallel_auth.ParallelAuth(
+                config.timeout,
+                oauth_path
+                if oauth_path is not None
+                else get_config_path().with_name("parallel-oauth.json"),
+            )
+            if self.mode == "oauth" and provider == "parallel"
             else None
         )
 
     def collect(self) -> UsageSnapshot:
         config = self.config
-        if self.mode == "cli-auth":
+        if self.mode == "oauth":
             if self.auth is None:
-                raise CollectionError(f"{self.provider}: cli-auth is not supported")
+                raise CollectionError(f"{self.provider}: oauth is not supported")
             return self.auth.collect()
         if self.mode == "cli" and self.provider in CLI_COLLECTORS:
             command, collect = CLI_COLLECTORS[self.provider]

@@ -1,4 +1,4 @@
-# All fields are optional. Credentials belong in the adjacent .env file.
+# All fields are optional. API credentials belong in the adjacent .env file.
 [metrics]
 # HTTP listen address.
 host = "127.0.0.1"
@@ -34,6 +34,8 @@ enabled = false
 
 [sources.parallel]
 enabled = false
+# Use source = "oauth" for device authorization without the Parallel CLI.
+# OAuth tokens are saved beside this configuration in parallel-oauth.json.
 
 [sources.minimax]
 enabled = false

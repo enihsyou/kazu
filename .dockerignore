@@ -2,6 +2,7 @@
 .codex
 .venv
 .env
+parallel-oauth.json
 .pytest_cache
 .ruff_cache
 __pycache__

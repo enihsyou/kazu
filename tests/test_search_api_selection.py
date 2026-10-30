@@ -55,3 +55,17 @@ def test_parallel_only_reads_balance(monkeypatch):
     assert [(m.name, m.value, dict(m.labels)) for m in snapshot.measurements] == [
         ("kazu_search_money_remaining", 12.34, {"currency": "USD", "scope": "account"})
     ]
+
+
+@pytest.mark.parametrize("selection", ["auto", "oauth"])
+def test_parallel_oauth_selection(monkeypatch, tmp_path, selection):
+    monkeypatch.setattr(search.shutil, "which", lambda command: None)
+    path = tmp_path / "parallel-oauth.json"
+    source = SearchSource("parallel", SourceConfig(source=selection), oauth_path=path)
+    assert source.mode == "oauth"
+    assert source.auth.path == path
+
+
+def test_oauth_is_not_supported_for_other_providers():
+    with pytest.raises(CollectionError, match="oauth is not supported"):
+        SearchSource("tavily", SourceConfig(source="oauth")).collect()
