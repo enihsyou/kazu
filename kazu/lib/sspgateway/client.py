@@ -8,6 +8,7 @@ from urllib.parse import urlencode, urljoin, urlsplit
 
 import httpx
 
+from kazu.lib.redaction import redact
 from kazu.lib.sspgateway.codec import GatewayCodec
 from kazu.lib.sspgateway.errors import GatewayHTTPError, GatewayNetworkError
 from kazu.lib.sspgateway.models import (
@@ -120,7 +121,11 @@ class SSPGateway:
         try:
             response = self._client.post(self.gateway_base_url, headers=headers, json=body)
         except httpx.TransportError as exc:
-            raise GatewayNetworkError("Gateway request failed") from exc
+            detail = str(exc).strip() or f"request timeout={self.timeout}s"
+            detail = redact(detail, headers)
+            raise GatewayNetworkError(
+                f"Gateway request failed ({type(exc).__name__}): {detail}"
+            ) from exc
         result = self._codec.decode_response(response)
         if self.trace is not None:
             self.trace(

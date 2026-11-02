@@ -13,6 +13,8 @@ from typing import Any
 from dotenv import dotenv_values
 from platformdirs import user_config_path
 
+from kazu.lib.redaction import register_secrets
+
 APP_NAME = "kazu"
 APP_AUTHOR = "KokomiNetwork"
 PROVIDERS = ("tinyfish", "tavily", "firecrawl", "parallel", "minimax")
@@ -99,6 +101,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     merged = _deep_merge(DEFAULT_CONFIG_DATA, user_data)
     env_path = path.parent / ".env"
     secrets = dotenv_values(env_path, interpolate=False) if env_path.exists() else {}
+    register_secrets(secrets)
 
     def credential(name: str) -> str:
         return os.environ.get(name, secrets.get(name) or "")

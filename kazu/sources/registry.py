@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from kazu.config import AppConfig, SourceConfig
 from kazu.lib.metrics.traffic import traffic_measurements
+from kazu.lib.redaction import redact
 from kazu.lib.sspgateway import SSPGatewayError
 from kazu.lib.traffic import SubscriptionTrafficCollectionError
 from kazu.lib.usage import CollectionError, UsageSnapshot, UsageSource
@@ -29,7 +30,8 @@ class SSPMetricsSource:
                 self._source = SSPSource(self._config)
             snapshot = self._source.collect()
         except (SSPGatewayError, SubscriptionTrafficCollectionError, ValueError) as exc:
-            raise CollectionError(f"SSP query failed ({type(exc).__name__})") from exc
+            detail = redact(str(exc), {"Authorization": self._config.authorization})
+            raise CollectionError(f"SSP query failed ({type(exc).__name__}): {detail}") from exc
         return UsageSnapshot(
             traffic_measurements(snapshot.current_usages), snapshot.observed_at.timestamp()
         )

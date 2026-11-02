@@ -16,6 +16,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
+from kazu.lib.redaction import RedactingFilter
 from kazu.lib.sspgateway import GatewayTrace
 from kazu.lib.traffic import SubscriptionTrafficSnapshot, SubscriptionTrafficUsage
 
@@ -44,6 +45,9 @@ class SSPConsole:
         logger = logging.getLogger("kazu")
         if not logger.handlers:
             logger.addHandler(self._logging_handler())
+        for handler in logger.handlers:
+            if not any(isinstance(item, RedactingFilter) for item in handler.filters):
+                handler.addFilter(RedactingFilter())
         logger.setLevel(logging.INFO)
         logger.propagate = False
 

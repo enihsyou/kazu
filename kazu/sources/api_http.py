@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from kazu.lib.redaction import redact
 from kazu.lib.usage import CollectionError
 
 
@@ -18,8 +19,10 @@ def get_json(
 ) -> dict[str, Any]:
     try:
         response = httpx.get(url, headers=headers, timeout=timeout, params=params)
-    except httpx.RequestError:
-        raise CollectionError("API request failed") from None
+    except httpx.RequestError as exc:
+        detail = str(exc).strip() or f"request timeout={timeout}s"
+        detail = redact(detail, headers)
+        raise CollectionError(f"API request failed ({type(exc).__name__}): {detail}") from None
     if not response.is_success:
         raise CollectionError(f"API query failed (HTTP {response.status_code})")
     try:

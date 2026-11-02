@@ -6,6 +6,7 @@ import math
 
 from kazu.config import SourceConfig
 from kazu.lib.measurements import CALLS_USED, MONEY_REMAINING
+from kazu.lib.redaction import redact
 from kazu.lib.usage import CollectionError, UsageSnapshot
 from kazu.sources.api_http import get_json
 
@@ -51,8 +52,8 @@ def collect(config: SourceConfig) -> UsageSnapshot:
                 ):
                     raise ValueError
                 measurements.append(CALLS_USED.create(float(total), scope="all_time"))
-        except CollectionError:
-            warnings.append(f"{query}: API query failed")
+        except CollectionError as exc:
+            warnings.append(f"{query}: {redact(str(exc), headers)}")
         except (KeyError, TypeError, ValueError, OverflowError):
             warnings.append(f"{query}: Unexpected API response schema")
     if not measurements:

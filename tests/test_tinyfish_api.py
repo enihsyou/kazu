@@ -54,7 +54,9 @@ def test_overdrawn_wallet_is_preserved(responses):
 
 
 @pytest.mark.parametrize("query", ["wallet", "search"])
-@pytest.mark.parametrize("failure", [CollectionError("fixture-key raw response"), {}])
+@pytest.mark.parametrize(
+    "failure", [CollectionError("fixture-key raw response"), CollectionError("HTTP 429"), {}]
+)
 def test_independent_query_failure_returns_partial_snapshot(responses, query, failure):
     responses[0][query] = failure
     snapshot = tinyfish_api.collect(SourceConfig(api_key="fixture-key", timeout=7))
@@ -62,6 +64,10 @@ def test_independent_query_failure_returns_partial_snapshot(responses, query, fa
     assert len(snapshot.warnings) == 1
     assert snapshot.warnings[0].startswith(f"{query}:")
     assert "fixture-key" not in snapshot.warnings[0]
+    if isinstance(failure, CollectionError):
+        assert snapshot.warnings == (
+            f"{query}: {str(failure).replace('fixture-key', '[REDACTED]')}",
+        )
     assert responses[1] == ["wallet", "search"]
 
 
@@ -92,7 +98,9 @@ def test_both_queries_must_not_fail(responses):
     responses[0].update(wallet={}, search=CollectionError("fixture-key raw response"))
     with pytest.raises(CollectionError) as error:
         tinyfish_api.collect(SourceConfig(api_key="fixture-key", timeout=7))
-    assert str(error.value) == ("wallet: Unexpected API response schema; search: API query failed")
+    assert str(error.value) == (
+        "wallet: Unexpected API response schema; search: [REDACTED] raw response"
+    )
 
 
 @pytest.mark.parametrize("key", ["", "   "])

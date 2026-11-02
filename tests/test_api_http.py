@@ -43,10 +43,24 @@ def test_response_errors_are_safe(monkeypatch, response, message):
     assert str(caught.value) == message
 
 
-def test_transport_error_is_safe(monkeypatch):
+@pytest.mark.parametrize(
+    "failure, detail",
+    [
+        (httpx.ConnectError("DNS lookup failed"), "ConnectError): DNS lookup failed"),
+        (httpx.ReadTimeout(""), "ReadTimeout): request timeout=1s"),
+        (httpx.ConnectError("private credential"), "ConnectError): [REDACTED]"),
+        (httpx.ConnectError("Bearer private credential"), "ConnectError): [REDACTED]"),
+    ],
+)
+def test_transport_error_is_safe(monkeypatch, failure, detail):
     def request(*args, **kwargs):
-        raise httpx.ConnectError("private credential")
+        raise failure
 
     monkeypatch.setattr(api_http.httpx, "get", request)
-    with pytest.raises(CollectionError, match="^API request failed$"):
-        api_http.get_json("https://example.test", headers={}, timeout=1)
+    with pytest.raises(CollectionError) as caught:
+        api_http.get_json(
+            "https://example.test",
+            headers={"Authorization": "Bearer private credential"},
+            timeout=1,
+        )
+    assert str(caught.value) == f"API request failed ({detail}"
